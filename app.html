@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>수경수학학원 클래스</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1f6f5c">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+  :root{
+    --deep:#0f2a24; --teal:#1f6f5c; --teal2:#2a8a72;
+    --gold:#c79a3c; --gold-soft:#f6efdf; --cream:#f7f8f6; --cream2:#eef1ee;
+    --line:#e3e8e4; --ink:#15201d; --muted:#7a857f; --red:#c0392b;
+    --sans:'Pretendard','Apple SD Gothic Neo',sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  body{font-family:var(--sans);background:var(--cream);color:var(--ink);min-height:100vh;padding-bottom:80px;}
+  /* 헤더 */
+  .top{position:sticky;top:0;z-index:50;background:var(--deep);color:#fff;padding:14px 18px;display:flex;align-items:center;justify-content:space-between;}
+  .top .ti{font-size:17px;font-weight:800;letter-spacing:-.4px;}
+  .top .ti .mark{display:inline-block;width:9px;height:9px;background:var(--gold);border-radius:50%;margin-right:7px;}
+  .top .who{font-size:12.5px;color:rgba(255,255,255,.7);}
+  .top .who b{color:#fff;font-weight:700;}
+  .logout{background:rgba(255,255,255,.12);color:#fff;border:none;border-radius:20px;padding:6px 13px;font-size:12px;cursor:pointer;font-family:var(--sans);}
+  /* 반 선택 바 */
+  .classbar{background:#fff;border-bottom:1px solid var(--line);padding:10px 14px;display:flex;gap:8px;overflow-x:auto;align-items:center;}
+  .classbar::-webkit-scrollbar{display:none;}
+  .class-chip{flex-shrink:0;background:var(--cream);border:1.5px solid transparent;border-radius:30px;padding:8px 16px;font-size:13.5px;font-weight:700;color:var(--muted);cursor:pointer;transition:.2s;white-space:nowrap;}
+  .class-chip.on{background:var(--teal);color:#fff;}
+  .wrap{max-width:680px;margin:0 auto;padding:16px 14px;}
+  /* 탭 */
+  .vtabs{display:flex;gap:6px;margin-bottom:16px;background:#fff;padding:5px;border-radius:12px;border:1px solid var(--line);}
+  .vtab{flex:1;text-align:center;padding:10px;font-size:14px;font-weight:700;color:var(--muted);border-radius:9px;cursor:pointer;transition:.2s;}
+  .vtab.on{background:var(--teal);color:#fff;}
+  /* 카드 공통 */
+  .post{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:12px;}
+  .post-head{display:flex;align-items:center;gap:9px;margin-bottom:10px;}
+  .avatar{width:34px;height:34px;border-radius:50%;background:var(--teal);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;flex-shrink:0;}
+  .avatar.teacher{background:var(--gold);}
+  .post-meta{flex:1;min-width:0;}
+  .post-meta .nm{font-size:14px;font-weight:700;}
+  .post-meta .tm{font-size:11.5px;color:var(--muted);}
+  .post-body{font-size:14.5px;line-height:1.7;white-space:pre-wrap;word-break:break-word;}
+  .post-imgs{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
+  .post-imgs img{width:84px;height:84px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid var(--line);}
+  .post-file{display:inline-flex;align-items:center;gap:7px;margin-top:10px;background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:9px 13px;font-size:13px;color:var(--ink);text-decoration:none;font-weight:600;}
+  .badge{font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:20px;}
+  .badge.q{background:#fdeceа;background:var(--gold-soft);color:var(--gold);}
+  .badge.done{background:#e6f4ee;color:var(--teal);}
+  .badge.wait{background:#fbeaea;color:var(--red);}
+  /* 답변 */
+  .answer{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);}
+  .answer .alabel{font-size:12px;font-weight:800;color:var(--teal);margin-bottom:7px;display:flex;align-items:center;gap:5px;}
+  /* 작성 영역 */
+  .composer{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:16px;}
+  .composer textarea{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:12px;font-size:14.5px;font-family:var(--sans);resize:vertical;min-height:70px;}
+  .composer textarea:focus{outline:none;border-color:var(--teal);}
+  .comp-actions{display:flex;gap:8px;margin-top:10px;align-items:center;}
+  .icon-btn{background:var(--cream);border:1px solid var(--line);border-radius:9px;padding:9px 13px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans);color:var(--ink);}
+  .send-btn{margin-left:auto;background:var(--teal);color:#fff;border:none;border-radius:30px;padding:10px 22px;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sans);}
+  .send-btn:disabled{opacity:.5;}
+  .preview{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
+  .preview .pv{position:relative;}
+  .preview img{width:64px;height:64px;object-fit:cover;border-radius:8px;}
+  .preview .del{position:absolute;top:-6px;right:-6px;background:var(--red);color:#fff;border:none;border-radius:50%;width:20px;height:20px;font-size:12px;cursor:pointer;line-height:1;}
+  .empty{text-align:center;color:var(--muted);font-size:14px;padding:50px 20px;}
+  /* 모달 */
+  .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;align-items:center;justify-content:center;padding:20px;}
+  .modal.on{display:flex;}
+  .modal-box{background:#fff;border-radius:16px;padding:24px;max-width:400px;width:100%;max-height:85vh;overflow-y:auto;}
+  .modal-box h3{font-size:18px;font-weight:800;margin-bottom:16px;}
+  .modal-photo{display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:200;align-items:center;justify-content:center;padding:16px;}
+  .modal-photo.on{display:flex;}
+  .modal-photo img{max-width:100%;max-height:90vh;object-fit:contain;border-radius:8px;}
+  .modal-photo .close-x{position:absolute;top:16px;right:20px;color:#fff;font-size:32px;cursor:pointer;}
+  /* 관리자: 학생/반 관리 */
+  .adm-section{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px;}
+  .adm-section h3{font-size:15px;font-weight:800;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;}
+  .mini-btn{background:var(--teal);color:#fff;border:none;border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--sans);}
+  .stu-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--cream2);}
+  .stu-row:last-child{border-bottom:none;}
+  .stu-row .nm{font-size:14px;font-weight:600;flex:1;}
+  .stu-row .tag{font-size:11px;color:var(--muted);}
+  .chk{width:20px;height:20px;}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--deep);color:#fff;padding:12px 22px;border-radius:30px;font-size:13.5px;font-weight:600;z-index:300;opacity:0;transition:.3s;pointer-events:none;}
+  .toast.on{opacity:1;}
+  input[type=text],input[type=password],select{font-family:var(--sans);}
+  .fld{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:12px;font-size:15px;margin-bottom:12px;}
+  .fld:focus{outline:none;border-color:var(--teal);}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="ti"><span class="mark"></span>수경수학학원<span style="font-size:12px;font-weight:600;color:rgba(255,255,255,.6);margin-left:6px;">김병진T</span></div>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <span class="who"><b id="who-name"></b> <span id="who-role"></span></span>
+    <button class="logout" onclick="doLogout()">로그아웃</button>
+  </div>
+</div>
+
+<div class="classbar" id="classbar"></div>
+
+<div class="wrap" id="main"></div>
+
+<!-- 사진 크게보기 -->
+<div class="modal-photo" id="photoModal" onclick="closePhoto()">
+  <span class="close-x">&times;</span>
+  <img id="photoBig" src="" alt="">
+</div>
+
+<!-- 범용 모달 -->
+<div class="modal" id="modal">
+  <div class="modal-box" id="modalBox"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+var firebaseConfig = {
+  apiKey: "AIzaSyDfQxi6q8xVUVgnvwON446Lnd-Becpwvbk",
+  databaseURL: "https://kimbjmath-default-rtdb.firebaseio.com",
+  projectId: "kimbjmath",
+  appId: "1:664889936709:web:2df1494b0cd978c64e4c2c"
+};
+if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+var db = firebase.database();
+
+var UID = localStorage.getItem('class_uid');
+var MY_NAME = localStorage.getItem('class_name');
+var MY_ROLE = localStorage.getItem('class_role') || 'student';
+var MY_KEY = localStorage.getItem('class_namekey');
+if(!UID){ location.href='index.html'; }
+
+var isAdmin = (MY_ROLE==='admin');
+document.getElementById('who-name').textContent = MY_NAME||'';
+document.getElementById('who-role').textContent = isAdmin ? '선생님' : '학생';
+
+// 상태
+var CLASSES={};      // 반 목록
+var CURRENT_CLASS=null;
+var POSTS={};        // 현재 반 게시물
+var USERS={};        // 전체 사용자(관리자용)
+var CUR_TAB='feed';  // feed(자료) / qna(질문)
+var uploadImgs=[];   // 업로드 대기 이미지 base64
+var uploadFile=null; // 업로드 대기 파일 {name,data}
+
+function toast(t){ var el=document.getElementById('toast'); el.textContent=t; el.classList.add('on'); setTimeout(function(){el.classList.remove('on');},2000); }
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function initial(name){ return (name||'?').trim().charAt(0); }
+function fmtTime(iso){
+  if(!iso) return '';
+  var d=new Date(iso), now=new Date();
+  var sameDay=d.toDateString()===now.toDateString();
+  var hh=('0'+d.getHours()).slice(-2), mm=('0'+d.getMinutes()).slice(-2);
+  if(sameDay) return '오늘 '+hh+':'+mm;
+  return (d.getMonth()+1)+'/'+d.getDate()+' '+hh+':'+mm;
+}
+
+function doLogout(){
+  if(!confirm('로그아웃 할까요?')) return;
+  ['class_uid','class_name','class_role','class_namekey'].forEach(function(k){localStorage.removeItem(k);});
+  location.href='index.html';
+}
+
+// 사진 압축 (focus-study 검증 방식)
+function compressImage(file, cb){
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var img=new Image();
+    img.onload=function(){
+      var canvas=document.createElement('canvas');
+      var max=900, w=img.width, h=img.height;
+      if(w>h){ if(w>max){ h=h*max/w; w=max; } }
+      else { if(h>max){ w=w*max/h; h=max; } }
+      canvas.width=w; canvas.height=h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      cb(canvas.toDataURL('image/jpeg',0.6));
+    };
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function openPhoto(src){ document.getElementById('photoBig').src=src; document.getElementById('photoModal').classList.add('on'); }
+function closePhoto(){ document.getElementById('photoModal').classList.remove('on'); }
+function openModal(html){ document.getElementById('modalBox').innerHTML=html; document.getElementById('modal').classList.add('on'); }
+function closeModal(){ document.getElementById('modal').classList.remove('on'); }
+
+// ===== 데이터 로드 =====
+function loadAll(cb){
+  db.ref('class_classes').once('value').then(function(snap){
+    CLASSES=snap.val()||{};
+    if(isAdmin){
+      return db.ref('class_users').once('value').then(function(s2){ USERS=s2.val()||{}; });
+    }
+  }).then(function(){
+    if(cb) cb();
+  });
+}
+
+// 학생이 속한 반만 / 관리자는 전체
+function myClasses(){
+  var arr=[];
+  Object.keys(CLASSES).forEach(function(cid){
+    var c=CLASSES[cid]; if(!c) return;
+    if(isAdmin){ arr.push(Object.assign({id:cid},c)); }
+    else if(c.members && c.members[MY_KEY]){ arr.push(Object.assign({id:cid},c)); }
+  });
+  arr.sort(function(a,b){ return (a.createdAt||'').localeCompare(b.createdAt||''); });
+  return arr;
+}
+
+function renderClassBar(){
+  var bar=document.getElementById('classbar');
+  var list=myClasses();
+  var html='';
+  list.forEach(function(c){
+    html+='<div class="class-chip'+(CURRENT_CLASS===c.id?' on':'')+'" onclick="selectClass(\''+c.id+'\')">'+esc(c.name)+'</div>';
+  });
+  if(isAdmin){
+    html+='<div class="class-chip" onclick="openNewClass()" style="background:var(--gold-soft);color:var(--gold);">+ 반 만들기</div>';
+  }
+  if(list.length===0 && !isAdmin){
+    bar.innerHTML='<div style="font-size:13px;color:var(--muted);padding:4px 8px;">아직 들어간 반이 없어요. 선생님이 추가해 주실 거예요.</div>';
+    return;
+  }
+  bar.innerHTML=html;
+}
+
+function selectClass(cid){
+  CURRENT_CLASS=cid;
+  renderClassBar();
+  loadPosts();
+}
+
+function loadPosts(){
+  if(!CURRENT_CLASS){ document.getElementById('main').innerHTML='<div class="empty">반을 선택해 주세요.</div>'; return; }
+  db.ref('class_posts/'+CURRENT_CLASS).once('value').then(function(snap){
+    POSTS=snap.val()||{};
+    renderMain();
+  });
+}
+
+// ===== 메인 렌더 =====
+function renderMain(){
+  if(isAdmin && CUR_TAB==='manage'){ renderManage(); return; }
+  if(!CURRENT_CLASS){
+    document.getElementById('main').innerHTML = isAdmin
+      ? '<div class="empty">반을 만들고 학생을 추가해 보세요.<br>위 <b>+ 반 만들기</b>를 누르세요.</div>'
+      : '<div class="empty">아직 들어간 반이 없어요.</div>';
+    return;
+  }
+  var html='';
+  // 탭
+  html+='<div class="vtabs">';
+  html+='<div class="vtab'+(CUR_TAB==='feed'?' on':'')+'" onclick="setTab(\'feed\')">📚 학습자료</div>';
+  html+='<div class="vtab'+(CUR_TAB==='qna'?' on':'')+'" onclick="setTab(\'qna\')">❓ 질문</div>';
+  if(isAdmin) html+='<div class="vtab'+(CUR_TAB==='manage'?' on':'')+'" onclick="setTab(\'manage\')">⚙️ 반 관리</div>';
+  html+='</div>';
+
+  // 작성 영역
+  if(CUR_TAB==='feed' && isAdmin){
+    html+=composerHtml('자료를 올려보세요 (공지, 설명, 숙제 안내 등)','자료 올리기','feed');
+  } else if(CUR_TAB==='qna' && !isAdmin){
+    html+=composerHtml('궁금한 문제를 적고, 사진을 올려보세요','질문하기','qna');
+  }
+
+  // 게시물 목록
+  var arr=Object.keys(POSTS).map(function(id){ return Object.assign({id:id},POSTS[id]); });
+  var filtered=arr.filter(function(p){ return p.type===(CUR_TAB==='feed'?'feed':'qna'); });
+  filtered.sort(function(a,b){ return (b.createdAt||'').localeCompare(a.createdAt||''); });
+
+  if(filtered.length===0){
+    html+='<div class="empty">'+(CUR_TAB==='feed'?'아직 올라온 자료가 없어요.':'아직 질문이 없어요.')+'</div>';
+  } else {
+    filtered.forEach(function(p){ html+=postHtml(p); });
+  }
+  document.getElementById('main').innerHTML=html;
+}
+
+function composerHtml(placeholder,btnLabel,type){
+  var h='<div class="composer">';
+  h+='<textarea id="comp-text" placeholder="'+placeholder+'"></textarea>';
+  h+='<div class="preview" id="comp-preview"></div>';
+  h+='<div class="comp-actions">';
+  h+='<button class="icon-btn" onclick="document.getElementById(\'img-input\').click()">📷 사진</button>';
+  if(type==='feed') h+='<button class="icon-btn" onclick="document.getElementById(\'file-input\').click()">📎 파일</button>';
+  h+='<button class="send-btn" id="send-btn" onclick="submitPost(\''+type+'\')">'+btnLabel+'</button>';
+  h+='</div>';
+  h+='<input type="file" id="img-input" accept="image/*" multiple style="display:none" onchange="onPickImgs(event)">';
+  if(type==='feed') h+='<input type="file" id="file-input" style="display:none" onchange="onPickFile(event)">';
+  h+='</div>';
+  return h;
+}
+
+function postHtml(p){
+  var isTeacher=(p.role==='admin');
+  var h='<div class="post">';
+  h+='<div class="post-head">';
+  h+='<div class="avatar'+(isTeacher?' teacher':'')+'">'+esc(initial(p.author))+'</div>';
+  h+='<div class="post-meta"><div class="nm">'+esc(p.author)+(isTeacher?' <span style="font-size:11px;color:var(--gold);">선생님</span>':'')+'</div><div class="tm">'+fmtTime(p.createdAt)+'</div></div>';
+  if(p.type==='qna'){
+    h+= p.answer ? '<span class="badge done">답변완료</span>' : '<span class="badge wait">답변대기</span>';
+  }
+  if(isAdmin || p.uid===UID){
+    h+='<button class="icon-btn" style="padding:5px 9px;margin-left:6px;" onclick="deletePost(\''+p.id+'\')">🗑</button>';
+  }
+  h+='</div>';
+  if(p.text) h+='<div class="post-body">'+esc(p.text)+'</div>';
+  if(p.imgs && p.imgs.length){
+    h+='<div class="post-imgs">';
+    p.imgs.forEach(function(src){ h+='<img src="'+src+'" onclick="openPhoto(this.src)">'; });
+    h+='</div>';
+  }
+  if(p.file && p.file.data){
+    h+='<a class="post-file" href="'+p.file.data+'" download="'+esc(p.file.name)+'">📎 '+esc(p.file.name)+'</a>';
+  }
+  // 질문의 답변
+  if(p.type==='qna'){
+    if(p.answer){
+      h+='<div class="answer"><div class="alabel">✏️ 선생님 답변</div>';
+      if(p.answer.text) h+='<div class="post-body">'+esc(p.answer.text)+'</div>';
+      if(p.answer.imgs && p.answer.imgs.length){
+        h+='<div class="post-imgs">';
+        p.answer.imgs.forEach(function(src){ h+='<img src="'+src+'" onclick="openPhoto(this.src)">'; });
+        h+='</div>';
+      }
+      h+='</div>';
+    }
+    if(isAdmin){
+      h+='<div style="margin-top:10px;"><button class="icon-btn" onclick="openAnswer(\''+p.id+'\')">'+(p.answer?'답변 수정':'답변 달기')+'</button></div>';
+    }
+  }
+  h+='</div>';
+  return h;
+}
+
+function setTab(t){ CUR_TAB=t; uploadImgs=[]; uploadFile=null; renderMain(); }
+
+// ===== 업로드 처리 =====
+function onPickImgs(ev){
+  var files=ev.target.files; if(!files||!files.length) return;
+  var remain=files.length;
+  Array.prototype.forEach.call(files,function(f){
+    compressImage(f,function(b64){ uploadImgs.push(b64); remain--; if(remain===0) renderPreview(); });
+  });
+}
+function onPickFile(ev){
+  var f=ev.target.files[0]; if(!f) return;
+  if(f.size>4*1024*1024){ toast('파일은 4MB 이하만 올릴 수 있어요'); return; }
+  var reader=new FileReader();
+  reader.onload=function(e){ uploadFile={name:f.name,data:e.target.result}; renderPreview(); };
+  reader.readAsDataURL(f);
+}
+function renderPreview(){
+  var pv=document.getElementById('comp-preview'); if(!pv) return;
+  var h='';
+  uploadImgs.forEach(function(src,i){ h+='<div class="pv"><img src="'+src+'"><button class="del" onclick="removeImg('+i+')">×</button></div>'; });
+  if(uploadFile){ h+='<div class="pv" style="display:flex;align-items:center;background:var(--cream);border-radius:8px;padding:6px 10px;font-size:12px;">📎 '+esc(uploadFile.name)+'<button class="del" onclick="removeFile()">×</button></div>'; }
+  pv.innerHTML=h;
+}
+function removeImg(i){ uploadImgs.splice(i,1); renderPreview(); }
+function removeFile(){ uploadFile=null; renderPreview(); }
+
+function submitPost(type){
+  var text=(document.getElementById('comp-text')||{}).value||'';
+  text=text.trim();
+  if(!text && uploadImgs.length===0 && !uploadFile){ toast('내용이나 사진을 입력해 주세요'); return; }
+  var btn=document.getElementById('send-btn'); if(btn) btn.disabled=true;
+  var id='p'+Date.now();
+  var post={ uid:UID, author:MY_NAME, role:MY_ROLE, type:type, text:text, createdAt:new Date().toISOString() };
+  if(uploadImgs.length) post.imgs=uploadImgs.slice();
+  if(uploadFile) post.file=uploadFile;
+  db.ref('class_posts/'+CURRENT_CLASS+'/'+id).set(post).then(function(){
+    uploadImgs=[]; uploadFile=null;
+    toast(type==='feed'?'자료를 올렸어요':'질문을 올렸어요');
+    loadPosts();
+  }).catch(function(e){ toast('전송 실패. 다시 시도해 주세요'); if(btn) btn.disabled=false; });
+}
+
+function deletePost(pid){
+  if(!confirm('삭제할까요?')) return;
+  db.ref('class_posts/'+CURRENT_CLASS+'/'+pid).remove().then(function(){ toast('삭제했어요'); loadPosts(); });
+}
+
+// ===== 답변 (관리자) =====
+var _answerImgs=[];
+function openAnswer(pid){
+  _answerImgs=[];
+  var p=POSTS[pid]; var existing=p&&p.answer?p.answer:{};
+  if(existing.imgs) _answerImgs=existing.imgs.slice();
+  var h='<h3>답변 달기</h3>';
+  h+='<textarea class="fld" id="ans-text" style="min-height:90px;" placeholder="설명을 적어주세요">'+esc(existing.text||'')+'</textarea>';
+  h+='<div class="preview" id="ans-preview"></div>';
+  h+='<button class="icon-btn" onclick="document.getElementById(\'ans-img\').click()">📷 풀이 사진</button>';
+  h+='<input type="file" id="ans-img" accept="image/*" multiple style="display:none" onchange="onAnsImgs(event)">';
+  h+='<div style="display:flex;gap:8px;margin-top:16px;">';
+  h+='<button class="icon-btn" style="flex:1;" onclick="closeModal()">취소</button>';
+  h+='<button class="send-btn" style="flex:1;margin:0;" onclick="saveAnswer(\''+pid+'\')">저장</button>';
+  h+='</div>';
+  openModal(h);
+  setTimeout(renderAnsPreview,50);
+}
+function onAnsImgs(ev){
+  var files=ev.target.files; if(!files||!files.length) return;
+  var remain=files.length;
+  Array.prototype.forEach.call(files,function(f){
+    compressImage(f,function(b64){ _answerImgs.push(b64); remain--; if(remain===0) renderAnsPreview(); });
+  });
+}
+function renderAnsPreview(){
+  var pv=document.getElementById('ans-preview'); if(!pv) return;
+  var h='';
+  _answerImgs.forEach(function(src,i){ h+='<div class="pv"><img src="'+src+'"><button class="del" onclick="rmAnsImg('+i+')">×</button></div>'; });
+  pv.innerHTML=h;
+}
+function rmAnsImg(i){ _answerImgs.splice(i,1); renderAnsPreview(); }
+function saveAnswer(pid){
+  var text=(document.getElementById('ans-text').value||'').trim();
+  if(!text && _answerImgs.length===0){ toast('답변 내용을 입력해 주세요'); return; }
+  var ans={ text:text, by:MY_NAME, at:new Date().toISOString() };
+  if(_answerImgs.length) ans.imgs=_answerImgs.slice();
+  db.ref('class_posts/'+CURRENT_CLASS+'/'+pid+'/answer').set(ans).then(function(){
+    closeModal(); toast('답변을 저장했어요'); loadPosts();
+  });
+}
+
+// ===== 관리자: 반 만들기 =====
+function openNewClass(){
+  var h='<h3>새 반 만들기</h3>';
+  h+='<input type="text" class="fld" id="nc-name" placeholder="반 이름 (예: 고1 화목반)">';
+  h+='<div style="display:flex;gap:8px;margin-top:6px;">';
+  h+='<button class="icon-btn" style="flex:1;" onclick="closeModal()">취소</button>';
+  h+='<button class="send-btn" style="flex:1;margin:0;" onclick="createClass()">만들기</button>';
+  h+='</div>';
+  openModal(h);
+}
+function createClass(){
+  var name=(document.getElementById('nc-name').value||'').trim();
+  if(!name){ toast('반 이름을 입력해 주세요'); return; }
+  var cid='c'+Date.now();
+  db.ref('class_classes/'+cid).set({ name:name, createdAt:new Date().toISOString(), members:{} }).then(function(){
+    closeModal(); toast('반을 만들었어요');
+    loadAll(function(){ CURRENT_CLASS=cid; CUR_TAB='manage'; renderClassBar(); renderMain(); });
+  });
+}
+
+// ===== 관리자: 반 관리 (학생 추가/제거) =====
+function renderManage(){
+  if(!CURRENT_CLASS){ document.getElementById('main').innerHTML='<div class="empty">반을 선택해 주세요.</div>'; return; }
+  var c=CLASSES[CURRENT_CLASS]; if(!c) return;
+  var members=c.members||{};
+  var html='';
+  html+='<div class="vtabs">';
+  html+='<div class="vtab" onclick="setTab(\'feed\')">📚 학습자료</div>';
+  html+='<div class="vtab" onclick="setTab(\'qna\')">❓ 질문</div>';
+  html+='<div class="vtab on" onclick="setTab(\'manage\')">⚙️ 반 관리</div>';
+  html+='</div>';
+
+  // 반 정보
+  html+='<div class="adm-section"><h3>'+esc(c.name)+' <button class="mini-btn" style="background:var(--red);" onclick="deleteClass()">반 삭제</button></h3>';
+  html+='<div style="font-size:13px;color:var(--muted);">학생 '+Object.keys(members).length+'명</div></div>';
+
+  // 현재 반 학생
+  html+='<div class="adm-section"><h3>이 반 학생</h3>';
+  var memKeys=Object.keys(members);
+  if(memKeys.length===0){ html+='<div style="font-size:13px;color:var(--muted);">아직 추가된 학생이 없어요.</div>'; }
+  else {
+    memKeys.forEach(function(k){
+      html+='<div class="stu-row"><div class="nm">'+esc(members[k].name||k)+'</div>';
+      html+='<button class="icon-btn" style="padding:5px 11px;" onclick="removeMember(\''+k+'\')">빼기</button></div>';
+    });
+  }
+  html+='</div>';
+
+  // 가입자 중 추가 가능한 학생
+  html+='<div class="adm-section"><h3>학생 추가 <span style="font-size:12px;color:var(--muted);font-weight:500;">가입한 학생 목록</span></h3>';
+  var addable=Object.keys(USERS).filter(function(k){
+    var u=USERS[k]; return u && u.role!=='admin' && !members[k];
+  });
+  if(addable.length===0){ html+='<div style="font-size:13px;color:var(--muted);">추가할 수 있는 학생이 없어요.<br>학생이 가입하면 여기에 나타나요.</div>'; }
+  else {
+    addable.forEach(function(k){
+      var u=USERS[k];
+      html+='<div class="stu-row"><div class="nm">'+esc(u.name)+'</div><div class="tag">'+esc(u.createdAt||'')+' 가입</div>';
+      html+='<button class="mini-btn" onclick="addMember(\''+k+'\')">추가</button></div>';
+    });
+  }
+  html+='</div>';
+
+  document.getElementById('main').innerHTML=html;
+}
+function addMember(key){
+  var u=USERS[key]; if(!u) return;
+  db.ref('class_classes/'+CURRENT_CLASS+'/members/'+key).set({ name:u.name, uid:u.uid }).then(function(){
+    toast(u.name+' 학생을 추가했어요');
+    loadAll(function(){ renderManage(); });
+  });
+}
+function removeMember(key){
+  if(!confirm('이 학생을 반에서 빼시겠어요?')) return;
+  db.ref('class_classes/'+CURRENT_CLASS+'/members/'+key).remove().then(function(){
+    toast('빼냈어요');
+    loadAll(function(){ renderManage(); });
+  });
+}
+function deleteClass(){
+  if(!confirm('이 반을 삭제할까요? 올라온 자료·질문도 함께 사라져요.')) return;
+  var cid=CURRENT_CLASS;
+  db.ref('class_classes/'+cid).remove();
+  db.ref('class_posts/'+cid).remove().then(function(){
+    toast('반을 삭제했어요'); CURRENT_CLASS=null; CUR_TAB='feed';
+    loadAll(function(){ var l=myClasses(); CURRENT_CLASS=l.length?l[0].id:null; renderClassBar(); renderMain(); });
+  });
+}
+
+// ===== 시작 =====
+loadAll(function(){
+  var list=myClasses();
+  if(list.length){ CURRENT_CLASS=list[0].id; }
+  renderClassBar();
+  if(CURRENT_CLASS){ loadPosts(); } else { renderMain(); }
+});
+</script>
+</body>
+</html>

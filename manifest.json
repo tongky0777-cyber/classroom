@@ -1,0 +1,21 @@
+{
+  "name": "수경수학학원 클래스",
+  "short_name": "수경클래스",
+  "description": "수경수학학원 우리 반 학습 공간",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#0f2a24",
+  "theme_color": "#1f6f5c",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='192' height='192' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='40' fill='%230f2a24'/%3E%3Ccircle cx='96' cy='70' r='13' fill='%23c79a3c'/%3E%3Ctext x='96' y='140' font-size='62' font-family='sans-serif' font-weight='bold' fill='white' text-anchor='middle'%3E수%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='512' height='512' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='110' fill='%230f2a24'/%3E%3Ccircle cx='256' cy='186' r='35' fill='%23c79a3c'/%3E%3Ctext x='256' y='372' font-size='165' font-family='sans-serif' font-weight='bold' fill='white' text-anchor='middle'%3E수%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}

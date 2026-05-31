@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>수경수학학원 클래스</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1f6f5c">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+  :root{
+    --deep:#0f2a24; --teal:#1f6f5c; --teal2:#2a8a72;
+    --gold:#c79a3c; --cream:#f7f8f6; --line:#e3e8e4;
+    --ink:#15201d; --muted:#7a857f;
+    --sans:'Pretendard','Apple SD Gothic Neo',sans-serif;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  body{font-family:var(--sans);background:linear-gradient(165deg,var(--cream),#fff);color:var(--ink);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+  .box{width:100%;max-width:380px;}
+  .logo{text-align:center;margin-bottom:36px;}
+  .logo .mark{display:inline-block;width:14px;height:14px;background:var(--gold);border-radius:50%;margin-right:10px;vertical-align:middle;}
+  .logo h1{display:inline;font-size:26px;font-weight:800;color:var(--deep);letter-spacing:-.6px;}
+  .logo p{margin-top:12px;font-size:14px;color:var(--muted);font-weight:500;}
+  .card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:32px 26px;box-shadow:0 18px 50px -28px rgba(15,42,36,.3);}
+  .tabs{display:flex;gap:6px;margin-bottom:26px;background:var(--cream);padding:5px;border-radius:12px;}
+  .tab{flex:1;text-align:center;padding:11px;font-size:14.5px;font-weight:700;color:var(--muted);border-radius:9px;cursor:pointer;transition:.2s;}
+  .tab.on{background:#fff;color:var(--teal);box-shadow:0 2px 8px -3px rgba(0,0,0,.15);}
+  .fg{margin-bottom:16px;}
+  .fg label{display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:7px;}
+  .fg input{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:13px 15px;font-size:16px;font-family:var(--sans);transition:.2s;}
+  .fg input:focus{outline:none;border-color:var(--teal);}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px;}
+  .btn{width:100%;background:var(--teal);color:#fff;border:none;border-radius:30px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;transition:.25s;font-family:var(--sans);margin-top:6px;}
+  .btn:active{background:var(--deep);}
+  .btn:disabled{opacity:.5;}
+  .msg{text-align:center;font-size:13.5px;margin-top:16px;min-height:18px;font-weight:600;}
+  .msg.err{color:#c0392b;}
+  .msg.ok{color:var(--teal);}
+  .panel{display:none;}
+  .panel.on{display:block;}
+  .admin-link{text-align:center;margin-top:22px;}
+  .admin-link a{font-size:12.5px;color:var(--muted);text-decoration:underline;cursor:pointer;}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="logo">
+    <div><span class="mark"></span><h1>수경수학학원</h1><span style="font-size:15px;font-weight:600;color:var(--muted);margin-left:7px;">김병진T</span></div>
+    <p>우리 반 학습 공간 · Class</p>
+  </div>
+  <div class="card">
+    <div class="tabs">
+      <div class="tab on" id="tab-login" onclick="switchTab('login')">로그인</div>
+      <div class="tab" id="tab-signup" onclick="switchTab('signup')">처음이에요</div>
+    </div>
+
+    <!-- 로그인 -->
+    <div class="panel on" id="panel-login">
+      <div class="fg"><label>이름</label><input type="text" id="li-name" placeholder="이름을 입력하세요"></div>
+      <div class="fg"><label>비밀번호</label><input type="password" id="li-pw" placeholder="비밀번호"></div>
+      <button class="btn" id="li-btn" onclick="doLogin()">로그인</button>
+    </div>
+
+    <!-- 가입 -->
+    <div class="panel" id="panel-signup">
+      <div class="fg"><label>이름</label><input type="text" id="su-name" placeholder="실명을 입력하세요"><div class="hint">선생님이 알아볼 수 있게 실명으로 적어주세요</div></div>
+      <div class="fg"><label>비밀번호 만들기</label><input type="password" id="su-pw" placeholder="사용할 비밀번호"></div>
+      <div class="fg"><label>비밀번호 확인</label><input type="password" id="su-pw2" placeholder="비밀번호 다시 입력"></div>
+      <button class="btn" id="su-btn" onclick="doSignup()">가입하기</button>
+    </div>
+
+    <div class="msg" id="msg"></div>
+  </div>
+  <div class="admin-link"><a onclick="adminLogin()">선생님(관리자) 로그인</a></div>
+</div>
+
+<script>
+var firebaseConfig = {
+  apiKey: "AIzaSyDfQxi6q8xVUVgnvwON446Lnd-Becpwvbk",
+  databaseURL: "https://kimbjmath-default-rtdb.firebaseio.com",
+  projectId: "kimbjmath",
+  appId: "1:664889936709:web:2df1494b0cd978c64e4c2c"
+};
+if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+var db = firebase.database();
+
+// 자동 로그인
+if(localStorage.getItem('class_uid')){ location.href='app.html'; }
+
+// 마지막 이름 자동 채움
+document.addEventListener('DOMContentLoaded', function(){
+  var last = localStorage.getItem('class_last_name');
+  if(last){ document.getElementById('li-name').value = last; }
+});
+
+function nameKey(name){ return name.trim().replace(/[.#$\[\]\/]/g,'_'); }
+function showMsg(t,type){ var m=document.getElementById('msg'); m.textContent=t; m.className='msg '+(type||''); }
+
+function switchTab(which){
+  document.getElementById('tab-login').classList.toggle('on', which==='login');
+  document.getElementById('tab-signup').classList.toggle('on', which==='signup');
+  document.getElementById('panel-login').classList.toggle('on', which==='login');
+  document.getElementById('panel-signup').classList.toggle('on', which==='signup');
+  showMsg('');
+}
+
+// 간단 해시 (비번 평문 저장 방지용 최소 장치)
+function hashPw(pw){
+  var h=0; for(var i=0;i<pw.length;i++){ h=((h<<5)-h)+pw.charCodeAt(i); h|=0; }
+  return 'h'+Math.abs(h)+'_'+pw.length;
+}
+
+function doSignup(){
+  var name=document.getElementById('su-name').value.trim();
+  var pw=document.getElementById('su-pw').value;
+  var pw2=document.getElementById('su-pw2').value;
+  if(!name){ showMsg('이름을 입력하세요','err'); return; }
+  if(pw.length<4){ showMsg('비밀번호는 4자 이상으로 만들어주세요','err'); return; }
+  if(pw!==pw2){ showMsg('비밀번호가 일치하지 않습니다','err'); return; }
+  var key=nameKey(name);
+  var btn=document.getElementById('su-btn'); btn.disabled=true;
+  db.ref('class_users/'+key).once('value').then(function(snap){
+    if(snap.exists()){
+      showMsg('이미 같은 이름으로 가입되어 있어요. 로그인해 주세요.','err');
+      btn.disabled=false; return;
+    }
+    var uid='u'+Date.now();
+    var user={ uid:uid, name:name, pw:hashPw(pw), role:'student', createdAt:new Date().toISOString().slice(0,10) };
+    db.ref('class_users/'+key).set(user).then(function(){
+      localStorage.setItem('class_uid',uid);
+      localStorage.setItem('class_name',name);
+      localStorage.setItem('class_namekey',key);
+      localStorage.setItem('class_role','student');
+      localStorage.setItem('class_last_name',name);
+      location.href='app.html';
+    });
+  }).catch(function(e){ showMsg('오류가 발생했습니다. 다시 시도해주세요.','err'); btn.disabled=false; });
+}
+
+function doLogin(){
+  var name=document.getElementById('li-name').value.trim();
+  var pw=document.getElementById('li-pw').value;
+  if(!name||!pw){ showMsg('이름과 비밀번호를 입력하세요','err'); return; }
+  var key=nameKey(name);
+  var btn=document.getElementById('li-btn'); btn.disabled=true;
+  db.ref('class_users/'+key).once('value').then(function(snap){
+    var u=snap.val();
+    if(!u){ showMsg('가입 정보가 없어요. "처음이에요"로 가입해 주세요.','err'); btn.disabled=false; return; }
+    if(u.pw!==hashPw(pw)){ showMsg('비밀번호가 맞지 않습니다','err'); btn.disabled=false; return; }
+    localStorage.setItem('class_uid',u.uid);
+    localStorage.setItem('class_name',u.name);
+    localStorage.setItem('class_namekey',key);
+    localStorage.setItem('class_role',u.role||'student');
+    localStorage.setItem('class_last_name',u.name);
+    location.href='app.html';
+  }).catch(function(e){ showMsg('오류가 발생했습니다','err'); btn.disabled=false; });
+}
+
+// 관리자(선생님) 로그인 — 아이디/비번 고정
+function adminLogin(){
+  var id=prompt('관리자 아이디');
+  if(id===null) return;
+  var pw=prompt('관리자 비밀번호');
+  if(pw===null) return;
+  if(id==='김병진' && pw==='0708'){
+    localStorage.setItem('class_uid','admin');
+    localStorage.setItem('class_name','김병진');
+    localStorage.setItem('class_namekey','김병진');
+    localStorage.setItem('class_role','admin');
+    location.href='app.html';
+  } else {
+    showMsg('관리자 정보가 맞지 않습니다','err');
+  }
+}
+</script>
+</body>
+</html>
