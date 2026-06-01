@@ -294,10 +294,20 @@ function requestJoin(cid){
   }).catch(function(){ toast('신청 실패. 다시 시도해 주세요'); });
 }
 
+var _postsRef = null;  // 현재 구독 중인 Firebase 참조
 function loadPosts(){
+  // 이전 반 실시간 구독 해제
+  if(_postsRef){ try{ _postsRef.off(); }catch(e){} _postsRef=null; }
   if(!CURRENT_CLASS){ document.getElementById('main').innerHTML='<div class="empty">반을 선택해 주세요.</div>'; return; }
-  db.ref('class_posts/'+CURRENT_CLASS).once('value').then(function(snap){
-    POSTS=snap.val()||{};
+  _postsRef = db.ref('class_posts/'+CURRENT_CLASS);
+  // 실시간 감지: 새 글/답변/삭제가 생기면 자동 반영
+  _postsRef.on('value', function(snap){
+    POSTS = snap.val()||{};
+    // 작성칸에 입력 중이면 화면을 다시 안 그림(깜빡임/입력 손실 방지)
+    var ta = document.getElementById('comp-text');
+    if(ta && ta.value && ta.value.trim().length>0){ return; }
+    // 모달(답변 작성 등)이 열려 있으면 다시 안 그림
+    if(document.getElementById('modal') && document.getElementById('modal').classList.contains('on')){ return; }
     renderMain();
   });
 }
@@ -442,8 +452,9 @@ function submitPost(type){
       notifyTelegram('❓ 새 질문\n['+className+'] '+MY_NAME+' 학생\n\n'+preview);
     }
     uploadImgs=[]; uploadFile=null;
+    var ta=document.getElementById('comp-text'); if(ta) ta.value='';
     toast(type==='feed'?'자료를 올렸어요':'질문을 올렸어요');
-    loadPosts();
+    renderMain();
   }).catch(function(e){ toast('전송 실패. 다시 시도해 주세요'); if(btn) btn.disabled=false; });
 }
 
