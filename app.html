@@ -415,7 +415,8 @@ function postHtml(p){
     h+= p.answer ? '<span class="badge done">답변완료</span>' : '<span class="badge wait">답변대기</span>';
   }
   if(isAdmin || p.uid===UID){
-    h+='<button class="icon-btn" style="padding:5px 9px;margin-left:6px;" onclick="deletePost(\''+p.id+'\')">🗑</button>';
+    h+='<button class="icon-btn" style="padding:5px 9px;margin-left:6px;" onclick="openEditPost(\''+p.id+'\')">✏️</button>';
+    h+='<button class="icon-btn" style="padding:5px 9px;margin-left:4px;" onclick="deletePost(\''+p.id+'\')">🗑</button>';
   }
   h+='</div>';
   if(p.text) h+='<div class="post-body">'+esc(p.text)+'</div>';
@@ -500,6 +501,32 @@ function submitPost(type){
 function deletePost(pid){
   if(!confirm('삭제할까요?')) return;
   db.ref('class_posts/'+CURRENT_CLASS+'/'+pid).remove().then(function(){ toast('삭제했어요'); loadPosts(); });
+}
+
+// 글 수정 (내용 텍스트)
+function openEditPost(pid){
+  var p=POSTS[pid]; if(!p) return;
+  var h='<h3 style="font-size:17px;font-weight:800;margin-bottom:6px;">글 수정</h3>';
+  h+='<div style="font-size:12px;color:var(--muted);margin-bottom:14px;">사진·파일은 수정에서 바꿀 수 없어요. 바꾸려면 글을 삭제하고 다시 올려 주세요.</div>';
+  h+='<textarea class="fld" id="edit-text" style="min-height:120px;width:100%;border:1.5px solid var(--line);border-radius:10px;padding:12px;font-size:14.5px;font-family:var(--sans);">'+esc(p.text||'')+'</textarea>';
+  h+='<div style="display:flex;gap:8px;margin-top:14px;">';
+  h+='<button class="icon-btn" style="flex:1;" onclick="closeModal()">취소</button>';
+  h+='<button class="send-btn" style="flex:1;margin:0;" onclick="saveEditPost(\''+pid+'\')">저장</button>';
+  h+='</div>';
+  openModal(h);
+}
+function saveEditPost(pid){
+  var text=(document.getElementById('edit-text').value||'').trim();
+  var p=POSTS[pid];
+  // 사진/파일 없는 글인데 내용까지 비우면 막기
+  var hasMedia = (p.imgs && p.imgs.length) || (p.file && p.file.data);
+  if(!text && !hasMedia){ toast('내용을 입력해 주세요'); return; }
+  db.ref('class_posts/'+CURRENT_CLASS+'/'+pid+'/text').set(text).then(function(){
+    if(POSTS[pid]) POSTS[pid].text=text;
+    closeModal();
+    toast('수정했어요');
+    renderMain();
+  }).catch(function(){ toast('수정 실패. 다시 시도해 주세요'); });
 }
 
 // ===== 답변 (관리자) =====
