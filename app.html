@@ -134,6 +134,20 @@ var MY_ROLE = localStorage.getItem('class_role') || 'student';
 var MY_KEY = localStorage.getItem('class_namekey');
 if(!UID){ location.href='index.html'; }
 
+// ===== 텔레그램 알림 (선생님에게) =====
+var TG_TOKEN = "8782124271:AAEZ7cv59orNmh3eDVVXrPG82o4fDgX7Lu8";
+var TG_CHAT_ID = "1916607767";
+function notifyTelegram(text){
+  try{
+    var url = "https://api.telegram.org/bot"+TG_TOKEN+"/sendMessage";
+    fetch(url, {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ chat_id:TG_CHAT_ID, text:text })
+    }).catch(function(){});
+  }catch(e){}
+}
+
 var isAdmin = (MY_ROLE==='admin');
 document.getElementById('who-name').textContent = MY_NAME||'';
 document.getElementById('who-role').textContent = isAdmin ? '선생님' : '학생';
@@ -375,6 +389,12 @@ function submitPost(type){
   if(uploadImgs.length) post.imgs=uploadImgs.slice();
   if(uploadFile) post.file=uploadFile;
   db.ref('class_posts/'+CURRENT_CLASS+'/'+id).set(post).then(function(){
+    // 학생이 질문을 올리면 선생님 텔레그램으로 알림
+    if(type==='qna' && MY_ROLE!=='admin'){
+      var className = (CLASSES[CURRENT_CLASS] && CLASSES[CURRENT_CLASS].name) ? CLASSES[CURRENT_CLASS].name : '';
+      var preview = text ? (text.length>60 ? text.slice(0,60)+'…' : text) : '(사진 질문)';
+      notifyTelegram('❓ 새 질문\n['+className+'] '+MY_NAME+' 학생\n\n'+preview);
+    }
     uploadImgs=[]; uploadFile=null;
     toast(type==='feed'?'자료를 올렸어요':'질문을 올렸어요');
     loadPosts();
