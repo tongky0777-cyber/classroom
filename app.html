@@ -215,6 +215,27 @@ function loadAll(cb){
   });
 }
 
+// 반 정보 실시간 구독 (승인 상태/멤버 변경이 자동 반영되도록)
+var _classesLive = false;
+function startClassesLive(){
+  if(_classesLive) return;
+  _classesLive = true;
+  db.ref('class_classes').on('value', function(snap){
+    CLASSES = snap.val()||{};
+    // 모달이 열려 있으면 다시 안 그림
+    if(document.getElementById('modal') && document.getElementById('modal').classList.contains('on')) return;
+    // 작성칸에 입력 중이면 다시 안 그림
+    var ta = document.getElementById('comp-text');
+    if(ta && ta.value && ta.value.trim().length>0) return;
+    renderClassBar();
+    // 현재 반을 못 보게 됐거나(빠짐) 반 선택 화면이면 메인 다시 그림
+    renderMain();
+  });
+  if(isAdmin){
+    db.ref('class_users').on('value', function(snap){ USERS = snap.val()||{}; });
+  }
+}
+
 // 학생이 속한 반만 / 관리자는 전체
 function myClasses(){
   var arr=[];
@@ -621,6 +642,7 @@ loadAll(function(){
   if(list.length){ CURRENT_CLASS=list[0].id; }
   renderClassBar();
   if(CURRENT_CLASS){ loadPosts(); } else { renderMain(); }
+  startClassesLive();
 });
 </script>
 </body>
