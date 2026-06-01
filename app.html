@@ -626,10 +626,13 @@ function renderManage(){
 
   document.getElementById('main').innerHTML=html;
 }
-// 가입 신청 학생을 특정 반에 배정 (신청은 유지 — 여러 반에 넣을 수 있게)
+// 가입 신청 학생을 특정 반에 배정 → 배정하면 신청 목록에서 자동 제거
 function assignToClass(key, cid){
   var s=(SIGNUPS||{})[key]; if(!s) return;
   db.ref('class_classes/'+cid+'/members/'+key).set({ name:s.name, uid:s.uid }).then(function(){
+    return db.ref('class_signups/'+key).remove();   // 배정 완료 → 신청 대기에서 제거
+  }).then(function(){
+    if(SIGNUPS) delete SIGNUPS[key];
     toast(s.name+' 학생을 '+CLASSES[cid].name+'에 넣었어요');
     loadAll(function(){ renderManage(); });
   });
