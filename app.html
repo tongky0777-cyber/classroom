@@ -157,6 +157,7 @@ var CLASSES={};      // 반 목록
 var CURRENT_CLASS=null;
 var POSTS={};        // 현재 반 게시물
 var USERS={};        // 전체 사용자(관리자용)
+var SIGNUPS={};      // 가입 신청 대기 (반 미배정)
 var CUR_TAB='feed';  // feed(자료) / qna(질문)
 var uploadImgs=[];   // 업로드 대기 이미지 base64
 var uploadFile=null; // 업로드 대기 파일 {name,data}
@@ -207,6 +208,8 @@ function closeModal(){ document.getElementById('modal').classList.remove('on'); 
 function loadAll(cb){
   db.ref('class_classes').once('value').then(function(snap){
     CLASSES=snap.val()||{};
+    return db.ref('class_signups').once('value').then(function(s3){ SIGNUPS=s3.val()||{}; });
+  }).then(function(){
     if(isAdmin){
       return db.ref('class_users').once('value').then(function(s2){ USERS=s2.val()||{}; });
     }
@@ -222,14 +225,20 @@ function startClassesLive(){
   _classesLive = true;
   db.ref('class_classes').on('value', function(snap){
     CLASSES = snap.val()||{};
-    // 모달이 열려 있으면 다시 안 그림
     if(document.getElementById('modal') && document.getElementById('modal').classList.contains('on')) return;
-    // 작성칸에 입력 중이면 다시 안 그림
     var ta = document.getElementById('comp-text');
     if(ta && ta.value && ta.value.trim().length>0) return;
     renderClassBar();
-    // 현재 반을 못 보게 됐거나(빠짐) 반 선택 화면이면 메인 다시 그림
     renderMain();
+  });
+  db.ref('class_signups').on('value', function(snap){
+    SIGNUPS = snap.val()||{};
+    if(document.getElementById('modal') && document.getElementById('modal').classList.contains('on')) return;
+    var ta = document.getElementById('comp-text');
+    if(ta && ta.value && ta.value.trim().length>0) return;
+    // 관리자면 반 관리 화면 갱신, 학생이면 신청 화면 갱신
+    if(isAdmin && CUR_TAB==='manage'){ renderManage(); }
+    else if(!isAdmin && !CURRENT_CLASS){ renderClassJoin(); }
   });
   if(isAdmin){
     db.ref('class_users').on('value', function(snap){ USERS = snap.val()||{}; });
@@ -279,38 +288,47 @@ function selectClass(cid){
 
 // 학생: 신청 가능한 반 목록 화면
 function renderClassJoin(){
-  var html = '<div style="padding:4px 2px 14px;font-size:14px;color:var(--muted);">들어갈 반을 선택해 신청하세요. 선생님이 승인하면 자료와 질문을 볼 수 있어요.</div>';
-  var ids = Object.keys(CLASSES);
-  if(ids.length===0){
-    html += '<div class="empty">아직 개설된 반이 없어요.</div>';
-    document.getElementById('main').innerHTML = html;
-    return;
-  }
-  ids.sort(function(a,b){ return (CLASSES[a].createdAt||'').localeCompare(CLASSES[b].createdAt||''); });
-  html += '<div style="display:flex;flex-direction:column;gap:10px;">';
-  ids.forEach(function(cid){
-    var c = CLASSES[cid];
-    var isMember = c.members && c.members[MY_KEY];
-    var isPending = c.pending && c.pending[MY_KEY];
-    var right;
-    if(isMember){ right = '<span style="font-size:13px;color:var(--teal);font-weight:700;">참여중 ✓</span>'; }
-    else if(isPending){ right = '<span style="font-size:13px;color:var(--gold);font-weight:700;">승인 대기중</span>'; }
-    else { right = '<button class="send-btn" style="margin:0;padding:8px 18px;" onclick="requestJoin(\''+cid+'\')">신청</button>'; }
-    html += '<div class="post" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0;">'
-      + '<span style="font-weight:700;font-size:15px;">'+esc(c.name)+'</span>'+right+'</div>';
+  // 내가 이미 어느 반의 멤버인지
+  var myMemberClasses = [];
+  Object.keys(CLASSES).forEach(function(cid){
+    var c=CLASSES[cid];
+    if(c.members && c.members[MY_KEY]) myMemberClasses.push(c.name);
   });
-  html += '</div>';
+  // 가입 신청 상태
+  var pending = (SIGNUPS && SIGNUPS[MY_KEY]) ? true : false;
+
+  var html = '';
+  if(myMemberClasses.length){
+    html += '<div style="padding:4px 2px 14px;font-size:14px;color:var(--muted);">참여 중인 반: '+esc(myMemberClasses.join(', '))+'</div>';
+  }
+
+  if(pending){
+    html += '<div class="post" style="text-align:center;padding:30px 16px;">'
+      + '<div style="font-size:34px;margin-bottom:10px;">⏳</div>'
+      + '<div style="font-weight:700;font-size:16px;margin-bottom:6px;">가입 신청 완료</div>'
+      + '<div style="font-size:14px;color:var(--muted);">선생님이 반에 배정해 주실 때까지<br>잠시 기다려 주세요.</div></div>';
+  } else if(myMemberClasses.length===0){
+    html += '<div class="post" style="text-align:center;padding:30px 16px;">'
+      + '<div style="font-size:34px;margin-bottom:10px;">🙋</div>'
+      + '<div style="font-weight:700;font-size:16px;margin-bottom:6px;">아직 들어간 반이 없어요</div>'
+      + '<div style="font-size:14px;color:var(--muted);margin-bottom:18px;">가입 신청을 하면 선생님이<br>반에 배정해 주세요.</div>'
+      + '<button class="send-btn" style="margin:0;" onclick="requestSignup()">가입 신청하기</button></div>';
+  } else {
+    // 이미 반이 있는 학생이 추가로 신청하고 싶을 때
+    html += '<div class="post" style="text-align:center;padding:24px 16px;">'
+      + '<div style="font-size:14px;color:var(--muted);margin-bottom:14px;">다른 반에도 들어가야 하나요?</div>'
+      + '<button class="send-btn" style="margin:0;" onclick="requestSignup()">가입 신청하기</button></div>';
+  }
   document.getElementById('main').innerHTML = html;
 }
 
-// 학생: 반 신청
-function requestJoin(cid){
-  db.ref('class_classes/'+cid+'/pending/'+MY_KEY).set({ name:MY_NAME, uid:UID, at:new Date().toISOString() }).then(function(){
-    if(!CLASSES[cid].pending) CLASSES[cid].pending={};
-    CLASSES[cid].pending[MY_KEY]={ name:MY_NAME, uid:UID };
-    var cname = CLASSES[cid].name||'';
-    notifyTelegram('🙋 반 신청\n['+cname+'] '+MY_NAME+' 학생이 신청했어요. 승인해 주세요.');
-    toast('신청했어요. 선생님 승인을 기다려 주세요');
+// 학생: 가입 신청 (반 선택 없이)
+function requestSignup(){
+  db.ref('class_signups/'+MY_KEY).set({ name:MY_NAME, uid:UID, at:new Date().toISOString() }).then(function(){
+    if(!SIGNUPS) SIGNUPS={};
+    SIGNUPS[MY_KEY]={ name:MY_NAME, uid:UID };
+    notifyTelegram('🙋 가입 신청\n'+MY_NAME+' 학생이 가입 신청했어요. 반에 배정해 주세요.');
+    toast('신청했어요. 선생님이 반에 배정해 주실 거예요');
     renderClassJoin();
   }).catch(function(){ toast('신청 실패. 다시 시도해 주세요'); });
 }
@@ -574,48 +592,54 @@ function renderManage(){
   }
   html+='</div>';
 
-  // 신청한 학생 승인
-  var pending = c.pending || {};
-  html+='<div class="adm-section"><h3>신청한 학생 <span style="font-size:12px;color:var(--muted);font-weight:500;">승인 대기</span></h3>';
-  var pendKeys=Object.keys(pending);
-  if(pendKeys.length===0){ html+='<div style="font-size:13px;color:var(--muted);">신청한 학생이 없어요.<br>학생이 이 반을 신청하면 여기에 나타나요.</div>'; }
+  // 가입 신청한 학생 (반 미배정) — 어느 반에 넣을지 선택
+  html+='<div class="adm-section"><h3>가입 신청 <span style="font-size:12px;color:var(--muted);font-weight:500;">반 배정 대기</span></h3>';
+  var signKeys=Object.keys(SIGNUPS||{});
+  if(signKeys.length===0){ html+='<div style="font-size:13px;color:var(--muted);">가입 신청한 학생이 없어요.<br>학생이 가입 신청하면 여기에 나타나요.</div>'; }
   else {
-    pendKeys.forEach(function(k){
-      var p=pending[k];
-      html+='<div class="stu-row"><div class="nm">'+esc(p.name||k)+'</div>';
-      html+='<div style="display:flex;gap:6px;">';
-      html+='<button class="mini-btn" onclick="approveMember(\''+k+'\')">승인</button>';
-      html+='<button class="icon-btn" style="padding:5px 11px;" onclick="rejectMember(\''+k+'\')">거절</button>';
-      html+='</div></div>';
+    var classIds=Object.keys(CLASSES);
+    signKeys.forEach(function(k){
+      var s=SIGNUPS[k];
+      html+='<div style="border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-bottom:8px;">';
+      html+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">';
+      html+='<span style="font-weight:700;font-size:14px;">'+esc(s.name||k)+'</span>';
+      html+='<button class="icon-btn" style="padding:4px 10px;" onclick="rejectSignup(\''+k+'\')">신청 삭제</button></div>';
+      if(classIds.length===0){
+        html+='<div style="font-size:12px;color:var(--muted);">먼저 반을 만들어 주세요.</div>';
+      } else {
+        html+='<div style="font-size:12px;color:var(--muted);margin-bottom:6px;">넣을 반 선택:</div>';
+        html+='<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+        classIds.forEach(function(cid){
+          var inThis = CLASSES[cid].members && CLASSES[cid].members[k];
+          if(inThis){
+            html+='<span class="mini-btn" style="background:var(--cream2);color:var(--muted);cursor:default;">'+esc(CLASSES[cid].name)+' ✓</span>';
+          } else {
+            html+='<button class="mini-btn" onclick="assignToClass(\''+k+'\',\''+cid+'\')">'+esc(CLASSES[cid].name)+'</button>';
+          }
+        });
+        html+='</div>';
+      }
+      html+='</div>';
     });
   }
   html+='</div>';
 
   document.getElementById('main').innerHTML=html;
 }
-// 신청 승인 → 멤버로 이동
-function approveMember(key){
-  var c=CLASSES[CURRENT_CLASS]; if(!c) return;
-  var p=(c.pending||{})[key]; if(!p) return;
-  db.ref('class_classes/'+CURRENT_CLASS+'/members/'+key).set({ name:p.name, uid:p.uid }).then(function(){
-    return db.ref('class_classes/'+CURRENT_CLASS+'/pending/'+key).remove();
-  }).then(function(){
-    toast(p.name+' 학생을 승인했어요');
+// 가입 신청 학생을 특정 반에 배정 (신청은 유지 — 여러 반에 넣을 수 있게)
+function assignToClass(key, cid){
+  var s=(SIGNUPS||{})[key]; if(!s) return;
+  db.ref('class_classes/'+cid+'/members/'+key).set({ name:s.name, uid:s.uid }).then(function(){
+    toast(s.name+' 학생을 '+CLASSES[cid].name+'에 넣었어요');
     loadAll(function(){ renderManage(); });
   });
 }
-// 신청 거절
-function rejectMember(key){
-  if(!confirm('이 신청을 거절할까요?')) return;
-  db.ref('class_classes/'+CURRENT_CLASS+'/pending/'+key).remove().then(function(){
-    toast('거절했어요');
-    loadAll(function(){ renderManage(); });
-  });
-}
-function addMember(key){
-  var u=USERS[key]; if(!u) return;
-  db.ref('class_classes/'+CURRENT_CLASS+'/members/'+key).set({ name:u.name, uid:u.uid }).then(function(){
-    toast(u.name+' 학생을 추가했어요');
+// 가입 신청 삭제 (배정 끝났거나 거절)
+function rejectSignup(key){
+  if(!confirm('이 가입 신청을 목록에서 지울까요?\n(이미 반에 넣었다면 반에서 빠지지 않아요)')) return;
+  db.ref('class_signups/'+key).remove().then(function(){
+    if(SIGNUPS) delete SIGNUPS[key];
+    toast('신청 목록에서 지웠어요');
     loadAll(function(){ renderManage(); });
   });
 }
