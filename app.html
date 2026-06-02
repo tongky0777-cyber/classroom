@@ -462,7 +462,14 @@ function postHtml(p){
 function setTab(t){ CUR_TAB=t; uploadImgs=[]; uploadFile=null; plannerImgs=[]; if(t==='planner'){ loadPlanners(renderMain); } else { renderMain(); } }
 
 // ===== 플래너 =====
-function todayStr(){ return new Date().toISOString().slice(0,10); }
+// 로컬(한국) 시간대 기준 YYYY-MM-DD. toISOString()은 UTC라 하루 어긋날 수 있어 사용하지 않음.
+function fmtDate(d){
+  var y=d.getFullYear();
+  var m=('0'+(d.getMonth()+1)).slice(-2);
+  var dd=('0'+d.getDate()).slice(-2);
+  return y+'-'+m+'-'+dd;
+}
+function todayStr(){ return fmtDate(new Date()); }
 
 function loadPlanners(cb){
   db.ref('class_planner').once('value').then(function(snap){
@@ -490,8 +497,8 @@ function renderPlannerStudent(){
     html += plannerForm(_plannerEditMode ? todayP : null);
   }
 
-  // 지난 플래너 (최근 14일)
-  var dates = Object.keys(mine).filter(function(d){ return d!==today; }).sort().reverse().slice(0,14);
+  // 지난 플래너 (최근 60일)
+  var dates = Object.keys(mine).filter(function(d){ return d!==today; }).sort().reverse().slice(0,60);
   if(dates.length){
     html += '<div class="section-title" style="margin-top:20px;">지난 플래너</div>';
     dates.forEach(function(d){
@@ -630,9 +637,10 @@ function renderPlannerAdmin(){
 }
 function setPlannerDate(d){ _plannerDate=d; renderMain(); }
 function movePlannerDate(delta){
-  var d=new Date((_plannerDate||todayStr())+'T00:00:00');
+  var base=(_plannerDate||todayStr()).split('-');
+  var d=new Date(parseInt(base[0],10), parseInt(base[1],10)-1, parseInt(base[2],10));
   d.setDate(d.getDate()+delta);
-  _plannerDate=d.toISOString().slice(0,10);
+  _plannerDate=fmtDate(d);
   renderMain();
 }
 
