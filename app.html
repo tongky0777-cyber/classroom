@@ -103,6 +103,8 @@
 
 <div class="classbar" id="classbar"></div>
 
+<div id="ddaybar" style="display:none;"></div>
+
 <div class="wrap" id="main"></div>
 
 <!-- 사진 크게보기 -->
@@ -904,6 +906,68 @@ function deleteClass(){
   });
 }
 
+// ===== 시험 D-day =====
+var MY_EXAM = null;  // 'YYYY-MM-DD' 또는 null
+function loadExamDate(cb){
+  if(isAdmin){ if(cb) cb(); return; }  // 관리자는 D-day 없음
+  db.ref('class_users/'+MY_KEY+'/examDate').once('value').then(function(snap){
+    MY_EXAM = snap.val() || null;
+    renderDdayBar();
+    if(cb) cb();
+  }).catch(function(){ if(cb) cb(); });
+}
+function dDayNum(dateStr){
+  // 오늘과 시험일의 날짜 차이 (양수=남음, 0=당일, 음수=지남)
+  var t=todayStr().split('-'), e=dateStr.split('-');
+  var td=new Date(parseInt(t[0],10),parseInt(t[1],10)-1,parseInt(t[2],10));
+  var ed=new Date(parseInt(e[0],10),parseInt(e[1],10)-1,parseInt(e[2],10));
+  return Math.round((ed-td)/86400000);
+}
+function renderDdayBar(){
+  var bar=document.getElementById('ddaybar');
+  if(!bar) return;
+  if(isAdmin){ bar.style.display='none'; return; }
+  bar.style.display='block';
+  if(!MY_EXAM){
+    bar.innerHTML='<div style="background:var(--gold-soft);color:var(--gold);padding:9px 16px;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);">'
+      +'<span>🎯 시험일을 설정하면 D-day가 표시돼요</span>'
+      +'<button onclick="openExamSetup()" style="background:var(--gold);color:#fff;border:none;border-radius:20px;padding:5px 13px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans);">설정</button></div>';
+    return;
+  }
+  var n=dDayNum(MY_EXAM);
+  var label, color='var(--teal)';
+  if(n>0){ label='시험까지 D-'+n; }
+  else if(n===0){ label='오늘이 시험일! D-DAY'; color='var(--red)'; }
+  else { label='시험일이 지났어요 (D+'+(-n)+')'; color='var(--muted)'; }
+  bar.innerHTML='<div style="background:'+color+';color:#fff;padding:10px 16px;font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:space-between;">'
+    +'<span>🎯 '+label+' <span style="font-weight:500;font-size:12px;opacity:.85;">('+MY_EXAM+')</span></span>'
+    +'<button onclick="openExamSetup()" style="background:rgba(255,255,255,.2);color:#fff;border:none;border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans);">변경</button></div>';
+}
+function openExamSetup(){
+  var h='<h3>시험 D-day 설정</h3>';
+  h+='<div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:12px;">중간·기말고사 첫날을 입력하면 모든 화면 위에 D-day가 표시돼요.</div>';
+  h+='<label style="font-size:12px;font-weight:700;">시험 첫날</label>';
+  h+='<input type="date" id="exam-date" class="fld" value="'+(MY_EXAM||'')+'" style="margin-top:4px;">';
+  h+='<div style="display:flex;gap:8px;margin-top:6px;">';
+  if(MY_EXAM){ h+='<button class="icon-btn" style="flex:1;color:var(--red);" onclick="clearExamDate()">삭제</button>'; }
+  h+='<button class="icon-btn" style="flex:1;" onclick="closeModal()">취소</button>';
+  h+='<button class="send-btn" style="flex:1;margin:0;" onclick="saveExamDate()">저장</button>';
+  h+='</div>';
+  openModal(h);
+}
+function saveExamDate(){
+  var d=document.getElementById('exam-date').value;
+  if(!d){ toast('시험 첫날을 선택해 주세요'); return; }
+  db.ref('class_users/'+MY_KEY+'/examDate').set(d).then(function(){
+    MY_EXAM=d; closeModal(); renderDdayBar(); toast('시험일을 저장했어요');
+  }).catch(function(){ toast('저장 실패. 다시 시도해 주세요'); });
+}
+function clearExamDate(){
+  db.ref('class_users/'+MY_KEY+'/examDate').remove().then(function(){
+    MY_EXAM=null; closeModal(); renderDdayBar(); toast('시험일을 삭제했어요');
+  });
+}
+
 // ===== 시작 =====
 loadAll(function(){
   var list=myClasses();
@@ -911,6 +975,7 @@ loadAll(function(){
   renderClassBar();
   if(CURRENT_CLASS){ loadPosts(); } else { renderMain(); }
   startClassesLive();
+  loadExamDate();
 });
 </script>
 </body>
