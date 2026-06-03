@@ -407,11 +407,10 @@ function composerHtml(placeholder,btnLabel,type){
   h+='<div class="preview" id="comp-preview"></div>';
   h+='<div class="comp-actions">';
   h+='<button class="icon-btn" onclick="document.getElementById(\'img-input\').click()">📷 사진</button>';
-  if(type==='feed') h+='<button class="icon-btn" onclick="document.getElementById(\'file-input\').click()">📎 파일</button>';
+  if(type==='feed') h+='<button class="icon-btn" onclick="openLinkInput()">🔗 파일 링크</button>';
   h+='<button class="send-btn" id="send-btn" onclick="submitPost(\''+type+'\')">'+btnLabel+'</button>';
   h+='</div>';
   h+='<input type="file" id="img-input" accept="image/*" multiple style="display:none" onchange="onPickImgs(event)">';
-  if(type==='feed') h+='<input type="file" id="file-input" style="display:none" onchange="onPickFile(event)">';
   h+='</div>';
   return h;
 }
@@ -436,8 +435,9 @@ function postHtml(p){
     p.imgs.forEach(function(src){ h+='<img src="'+src+'" onclick="openPhoto(this.src)">'; });
     h+='</div>';
   }
-  if(p.file && p.file.data){
-    h+='<a class="post-file" href="'+p.file.data+'" download="'+esc(p.file.name)+'">📎 '+esc(p.file.name)+'</a>';
+  if(p.file && (p.file.url || p.file.data)){
+    var furl = p.file.url || p.file.data;
+    h+='<a class="post-file" href="'+furl+'" target="_blank" rel="noopener">🔗 '+esc(p.file.name)+'</a>';
   }
   // 질문의 답변
   if(p.type==='qna'){
@@ -652,18 +652,38 @@ function onPickImgs(ev){
     compressImage(f,function(b64){ uploadImgs.push(b64); remain--; if(remain===0) renderPreview(); });
   });
 }
-function onPickFile(ev){
-  var f=ev.target.files[0]; if(!f) return;
-  if(f.size>4*1024*1024){ toast('파일은 4MB 이하만 올릴 수 있어요'); return; }
-  var reader=new FileReader();
-  reader.onload=function(e){ uploadFile={name:f.name,data:e.target.result}; renderPreview(); };
-  reader.readAsDataURL(f);
+// 파일 링크 첨부 (구글 드라이브 등) — 링크와 이름을 입력받아 첨부
+function openLinkInput(){
+  var h='<h3>파일 링크 첨부</h3>';
+  h+='<div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:12px;">구글 드라이브 등에서 받은 공유 링크를 붙여넣으세요. 학생이 누르면 새 창에서 열려요.</div>';
+  h+='<label style="font-size:12px;font-weight:700;">파일 이름</label>';
+  h+='<input type="text" id="lk-name" class="fld" placeholder="예: 6월 모의고사 해설.pdf" style="margin-top:4px;">';
+  h+='<label style="font-size:12px;font-weight:700;">링크 주소</label>';
+  h+='<input type="text" id="lk-url" class="fld" placeholder="https://..." style="margin-top:4px;">';
+  h+='<div style="display:flex;gap:8px;margin-top:6px;">';
+  h+='<button class="icon-btn" style="flex:1;" onclick="closeModal()">취소</button>';
+  h+='<button class="send-btn" style="flex:1;margin:0;" onclick="attachLink()">첨부</button>';
+  h+='</div>';
+  openModal(h);
+}
+function attachLink(){
+  var name=(document.getElementById('lk-name').value||'').trim();
+  var url=(document.getElementById('lk-url').value||'').trim();
+  if(!url){ toast('링크 주소를 입력해 주세요'); return; }
+  if(!/^https?:\/\//i.test(url)){ toast('http로 시작하는 올바른 링크를 넣어 주세요'); return; }
+  if(!name){ name='첨부파일'; }
+  uploadFile={ name:name, url:url };
+  closeModal();
+  renderPreview();
+  toast('링크를 첨부했어요');
 }
 function renderPreview(){
   var pv=document.getElementById('comp-preview'); if(!pv) return;
   var h='';
   uploadImgs.forEach(function(src,i){ h+='<div class="pv"><img src="'+src+'"><button class="del" onclick="removeImg('+i+')">×</button></div>'; });
-  if(uploadFile){ h+='<div class="pv" style="display:flex;align-items:center;background:var(--cream);border-radius:8px;padding:6px 10px;font-size:12px;">📎 '+esc(uploadFile.name)+'<button class="del" onclick="removeFile()">×</button></div>'; }
+  if(uploadFile){
+    h+='<div class="pv" style="display:flex;align-items:center;background:var(--cream);border-radius:8px;padding:6px 10px;font-size:12px;">🔗 '+esc(uploadFile.name)+'<button class="del" onclick="removeFile()">×</button></div>';
+  }
   pv.innerHTML=h;
 }
 function removeImg(i){ uploadImgs.splice(i,1); renderPreview(); }
@@ -677,7 +697,7 @@ function submitPost(type){
   var id='p'+Date.now();
   var post={ uid:UID, author:MY_NAME, role:MY_ROLE, type:type, text:text, createdAt:new Date().toISOString() };
   if(uploadImgs.length) post.imgs=uploadImgs.slice();
-  if(uploadFile) post.file=uploadFile;
+  if(uploadFile) post.file={ name:uploadFile.name, url:uploadFile.url };
   db.ref('class_posts/'+CURRENT_CLASS+'/'+id).set(post).then(function(){
     // 학생이 질문을 올리면 선생님 텔레그램으로 알림
     if(type==='qna' && MY_ROLE!=='admin'){
@@ -713,7 +733,7 @@ function saveEditPost(pid){
   var text=(document.getElementById('edit-text').value||'').trim();
   var p=POSTS[pid];
   // 사진/파일 없는 글인데 내용까지 비우면 막기
-  var hasMedia = (p.imgs && p.imgs.length) || (p.file && p.file.data);
+  var hasMedia = (p.imgs && p.imgs.length) || (p.file && (p.file.url || p.file.data));
   if(!text && !hasMedia){ toast('내용을 입력해 주세요'); return; }
   db.ref('class_posts/'+CURRENT_CLASS+'/'+pid+'/text').set(text).then(function(){
     if(POSTS[pid]) POSTS[pid].text=text;
