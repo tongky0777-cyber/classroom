@@ -497,8 +497,8 @@ function renderPlannerStudent(){
     html += plannerForm(_plannerEditMode ? todayP : null);
   }
 
-  // 지난 플래너 (최근 60일)
-  var dates = Object.keys(mine).filter(function(d){ return d!==today; }).sort().reverse().slice(0,60);
+  // 지난 플래너 (작성한 전체)
+  var dates = Object.keys(mine).filter(function(d){ return d!==today; }).sort().reverse();
   if(dates.length){
     html += '<div class="section-title" style="margin-top:20px;">지난 플래너</div>';
     dates.forEach(function(d){
