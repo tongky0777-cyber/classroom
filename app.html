@@ -265,13 +265,15 @@ function renderClassBar(){
   var bar=document.getElementById('classbar');
   var list=myClasses();
   var html='';
+  if(isAdmin && CURRENT_CLASS){
+    html+='<div class="class-chip" onclick="backToClassPicker()" style="background:var(--cream);color:var(--teal);">‹ 반 목록</div>';
+  }
   list.forEach(function(c){
     html+='<div class="class-chip'+(CURRENT_CLASS===c.id?' on':'')+'" onclick="selectClass(\''+c.id+'\')">'+esc(c.name)+'</div>';
   });
   if(isAdmin){
     html+='<div class="class-chip" onclick="openNewClass()" style="background:var(--gold-soft);color:var(--gold);">+ 반 만들기</div>';
   } else {
-    // 학생: 반 신청/추가 신청 진입
     html+='<div class="class-chip" onclick="showClassJoin()" style="background:var(--gold-soft);color:var(--gold);">+ 반 신청</div>';
   }
   bar.innerHTML=html;
@@ -286,6 +288,7 @@ function showClassJoin(){
 
 function selectClass(cid){
   CURRENT_CLASS=cid;
+  CUR_TAB='feed';
   renderClassBar();
   loadPosts();
 }
@@ -355,12 +358,40 @@ function loadPosts(){
   });
 }
 
+// 관리자: 반 선택 화면 (반 카드 목록)
+function renderAdminClassPicker(){
+  var list = myClasses();
+  var html = '<div style="font-size:15px;font-weight:700;margin:4px 2px 14px;">반을 선택하세요</div>';
+  if(!list.length){
+    html += '<div class="empty">아직 만든 반이 없어요.<br>위 <b>+ 반 만들기</b>를 누르세요.</div>';
+    document.getElementById('main').innerHTML = html;
+    return;
+  }
+  list.forEach(function(c){
+    var memberCnt = c.members ? Object.keys(c.members).length : 0;
+    html += '<div onclick="selectClass(\''+c.id+'\')" style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:10px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;">'
+      +'<div><div style="font-size:16px;font-weight:700;color:var(--deep);">'+esc(c.name)+'</div>'
+      +'<div style="font-size:12px;color:var(--muted);margin-top:4px;">학생 '+memberCnt+'명</div></div>'
+      +'<span style="color:var(--teal);font-size:20px;">›</span>'
+      +'</div>';
+  });
+  document.getElementById('main').innerHTML = html;
+}
+
+// 관리자: 현재 반에서 반 목록으로 돌아가기
+function backToClassPicker(){
+  CURRENT_CLASS=null;
+  CUR_TAB='feed';
+  renderClassBar();
+  renderMain();
+}
+
 // ===== 메인 렌더 =====
 function renderMain(){
   if(isAdmin && CUR_TAB==='manage'){ renderManage(); return; }
   if(!CURRENT_CLASS){
     if(isAdmin){
-      document.getElementById('main').innerHTML = '<div class="empty">반을 만들고 학생을 추가해 보세요.<br>위 <b>+ 반 만들기</b>를 누르세요.</div>';
+      renderAdminClassPicker();  // 관리자: 반 선택 화면 먼저
     } else {
       renderClassJoin();  // 학생: 신청 가능한 반 목록 보여주기
     }
@@ -371,9 +402,18 @@ function renderMain(){
   html+='<div class="vtabs">';
   html+='<div class="vtab'+(CUR_TAB==='feed'?' on':'')+'" onclick="setTab(\'feed\')">📚 학습자료</div>';
   html+='<div class="vtab'+(CUR_TAB==='qna'?' on':'')+'" onclick="setTab(\'qna\')">❓ 질문</div>';
+  html+='<div class="vtab'+(CUR_TAB==='hw'?' on':'')+'" onclick="setTab(\'hw\')">'+(isAdmin?'📋 숙제 현황':'📋 내 숙제')+'</div>';
   html+='<div class="vtab'+(CUR_TAB==='planner'?' on':'')+'" onclick="setTab(\'planner\')">📅 플래너</div>';
   if(isAdmin) html+='<div class="vtab'+(CUR_TAB==='manage'?' on':'')+'" onclick="setTab(\'manage\')">⚙️ 반 관리</div>';
   html+='</div>';
+
+  // 숙제 탭 — 별도 렌더
+  if(CUR_TAB==='hw'){
+    document.getElementById('main').innerHTML = html;
+    if(isAdmin) renderHwAdmin();
+    else renderHwStudent();
+    return;
+  }
 
   // 플래너 탭은 별도 렌더
   if(CUR_TAB==='planner'){
@@ -461,10 +501,162 @@ function postHtml(p){
   return h;
 }
 
-function setTab(t){ CUR_TAB=t; uploadImgs=[]; uploadFile=null; plannerImgs=[]; if(t==='planner'){ loadPlanners(renderMain); } else { renderMain(); } }
+function setTab(t){ CUR_TAB=t; uploadImgs=[]; uploadFile=null; plannerImgs=[]; if(t==='planner'){ loadPlanners(renderMain); } else if(t==='hw'){ loadHomework(renderMain); } else { renderMain(); } }
 
-// ===== 플래너 =====
-// 로컬(한국) 시간대 기준 YYYY-MM-DD. toISOString()은 UTC라 하루 어긋날 수 있어 사용하지 않음.
+// ===== 숙제 연동 (대시보드 bjm_homework ↔ 클래스룸) =====
+var HW_LIST = [];      // 대시보드 숙제 (bjm_homework)
+var HW_STUDENTS = [];  // 대시보드 학생 (bjm_students) — classKey 매칭용
+var HW_DONE = {};      // 완료 체크 (class_hw_done) {hwId:{classKey:{done,at}}}
+
+function loadHomework(cb){
+  var done=0; function step(){ done++; if(done>=3 && cb) cb(); }
+  try{
+    db.ref('bjm_homework').once('value').then(function(s){ var v=s.val(); HW_LIST = v? (Array.isArray(v)?v:Object.values(v)) : []; step(); }).catch(step);
+    db.ref('bjm_students').once('value').then(function(s){ var v=s.val(); HW_STUDENTS = v? (Array.isArray(v)?v:Object.values(v)) : []; step(); }).catch(step);
+    db.ref('class_hw_done').once('value').then(function(s){ HW_DONE = s.val()||{}; step(); }).catch(step);
+  }catch(e){ if(cb) cb(); }
+}
+
+// 내 classKey에 연결된 대시보드 학생 id 찾기
+function mySid(){
+  var me = HW_STUDENTS.find(function(st){ return st.classKey===MY_KEY; });
+  return me ? me.id : null;
+}
+// classKey로 학생 id
+function sidOfClassKey(key){
+  var st = HW_STUDENTS.find(function(s){ return s.classKey===key; });
+  return st? st.id : null;
+}
+
+// 이 학생(sid)에게 해당하는 숙제인지 (개인 숙제 sid 일치 OR 반 숙제 gid가 학생 반)
+function hwForSid(h, sid){
+  if(!sid) return false;
+  if(h.sid && h.sid===sid) return true;
+  return false;
+}
+
+function isHwDone(hwId, key){
+  return !!(HW_DONE[hwId] && HW_DONE[hwId][key] && HW_DONE[hwId][key].done);
+}
+
+// 학생: 내 숙제 목록
+function renderHwStudent(){
+  var main=document.getElementById('main');
+  var sid = mySid();
+  if(!sid){
+    main.innerHTML += '<div class="empty">아직 선생님과 연결되지 않았어요.<br>선생님이 대시보드에서 계정을 연결하면<br>숙제가 여기 표시됩니다.</div>';
+    return;
+  }
+  var mine = HW_LIST.filter(function(h){ return hwForSid(h, sid); });
+  // 미완료 먼저, 그다음 완료. 마감일 순
+  mine.sort(function(a,b){ return (a.due||'').localeCompare(b.due||''); });
+  var doneCnt = mine.filter(function(h){ return isHwDone(h.id, MY_KEY); }).length;
+
+  var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
+    +'<span style="font-size:14px;font-weight:700;">받은 숙제</span>'
+    +'<span style="font-size:13px;color:var(--teal);font-weight:700;">'+doneCnt+' / '+mine.length+' 완료</span></div>';
+
+  if(!mine.length){ main.innerHTML += html + '<div class="empty">아직 받은 숙제가 없어요.</div>'; return; }
+
+  var today = todayStr();
+  // 미완료 → 완료 순
+  mine.sort(function(a,b){
+    var da=isHwDone(a.id,MY_KEY)?1:0, db_=isHwDone(b.id,MY_KEY)?1:0;
+    if(da!==db_) return da-db_;
+    return (a.due||'').localeCompare(b.due||'');
+  });
+
+  mine.forEach(function(h){
+    var done = isHwDone(h.id, MY_KEY);
+    var info = [h.book, h.unit].filter(Boolean).join(' · ');
+    var range = h.range||'';
+    var overdue = h.due && h.due<today && !done;
+    if(done){
+      var at = (HW_DONE[h.id][MY_KEY].at||'').replace('T',' ').slice(0,16);
+      html += '<div style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;opacity:.6;">'
+        +'<div style="display:flex;align-items:flex-start;gap:10px;">'
+        +'<div style="width:22px;height:22px;border-radius:6px;background:var(--teal);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">✓</div>'
+        +'<div style="flex:1;min-width:0;">'
+        +'<div style="font-size:13.5px;font-weight:700;text-decoration:line-through;">'+esc(info||h.name||'숙제')+'</div>'
+        +(range?'<div style="font-size:12px;color:var(--muted);margin-top:3px;">'+esc(range)+(h.due?' · '+h.due+'까지':'')+'</div>':'')
+        +'<div style="font-size:11px;color:var(--teal);margin-top:4px;">완료함'+(at?' · '+at:'')+'</div>'
+        +'<button class="icon-btn" style="margin-top:8px;padding:5px 12px;font-size:12px;" onclick="toggleHwDone(\''+h.id+'\',false)">완료 취소</button>'
+        +'</div></div></div>';
+    } else {
+      html += '<div style="background:#fff;border:1.5px solid '+(overdue?'#c0392b':'var(--gold)')+';border-radius:14px;padding:14px;margin-bottom:10px;">'
+        +'<div style="display:flex;align-items:flex-start;gap:10px;">'
+        +'<div style="width:22px;height:22px;border-radius:6px;border:2px solid '+(overdue?'#c0392b':'var(--gold)')+';flex-shrink:0;margin-top:1px;"></div>'
+        +'<div style="flex:1;min-width:0;">'
+        +'<div style="font-size:13.5px;font-weight:700;">'+esc(info||h.name||'숙제')+'</div>'
+        +(range?'<div style="font-size:12px;color:var(--muted);margin-top:3px;">'+esc(range)+(h.due?' · <span style="color:'+(overdue?'#c0392b':'var(--muted)')+';font-weight:600;">'+h.due+'까지</span>':'')+'</div>':'')
+        +'<button class="send-btn" style="margin-top:10px;width:100%;" onclick="toggleHwDone(\''+h.id+'\',true)">완료했어요 체크</button>'
+        +'</div></div></div>';
+    }
+  });
+  main.innerHTML += html;
+}
+
+function toggleHwDone(hwId, done){
+  var ref = db.ref('class_hw_done/'+hwId+'/'+MY_KEY);
+  if(done){
+    var rec = { done:true, at:new Date().toISOString(), name:MY_NAME };
+    ref.set(rec).then(function(){
+      if(!HW_DONE[hwId]) HW_DONE[hwId]={};
+      HW_DONE[hwId][MY_KEY]=rec;
+      notifyTelegram('✅ 숙제 완료\n'+MY_NAME+' 학생');
+      toast('완료 체크했어요'); renderMain();
+    }).catch(function(){ toast('실패. 다시 시도해 주세요'); });
+  } else {
+    ref.set({ done:false, at:new Date().toISOString(), name:MY_NAME }).then(function(){
+      if(!HW_DONE[hwId]) HW_DONE[hwId]={};
+      HW_DONE[hwId][MY_KEY]={done:false};
+      toast('완료를 취소했어요'); renderMain();
+    }).catch(function(){ toast('실패. 다시 시도해 주세요'); });
+  }
+}
+
+// 관리자: 이 반 학생들의 숙제 현황
+function renderHwAdmin(){
+  var main=document.getElementById('main');
+  if(!CURRENT_CLASS){ main.innerHTML += '<div class="empty">반을 선택해 주세요.</div>'; return; }
+  var members = (CLASSES[CURRENT_CLASS] && CLASSES[CURRENT_CLASS].members) ? CLASSES[CURRENT_CLASS].members : {};
+  var memberKeys = Object.keys(members);
+  if(!memberKeys.length){ main.innerHTML += '<div class="empty">이 반에 학생이 없어요.</div>'; return; }
+
+  var html = '<div style="font-size:12px;color:var(--muted);margin-bottom:12px;">학생별로 받은 숙제와 완료 여부예요. 완료 체크는 학생이 합니다.</div>';
+
+  memberKeys.forEach(function(k){
+    var sid = sidOfClassKey(k);
+    var name = members[k].name || k;
+    var mine = sid ? HW_LIST.filter(function(h){ return hwForSid(h, sid); }) : [];
+    var doneCnt = mine.filter(function(h){ return isHwDone(h.id, k); }).length;
+
+    html += '<div class="post" style="padding:12px 14px;">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:'+(mine.length?'8px':'0')+';">'
+      +'<span style="font-weight:700;font-size:14px;">'+esc(name)+'</span>'
+      +'<span style="font-size:12px;color:'+(!sid?'var(--gold)':(mine.length&&doneCnt===mine.length?'var(--teal)':'var(--muted)'))+';">'
+      +(!sid?'미연결':(doneCnt+' / '+mine.length+' 완료'))+'</span></div>';
+    if(!sid){
+      html += '<div style="font-size:12px;color:var(--muted);">대시보드에서 이 학생과 계정을 연결하면 숙제가 표시됩니다.</div>';
+    } else if(!mine.length){
+      html += '<div style="font-size:12px;color:var(--muted);">받은 숙제가 없어요.</div>';
+    } else {
+      mine.sort(function(a,b){ return (a.due||'').localeCompare(b.due||''); });
+      mine.forEach(function(h){
+        var done=isHwDone(h.id,k);
+        var info=[h.book,h.unit].filter(Boolean).join(' · ')||h.name||'숙제';
+        html += '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:12.5px;">'
+          +'<span style="flex-shrink:0;color:'+(done?'var(--teal)':'var(--muted)')+';">'+(done?'✓':'○')+'</span>'
+          +'<span style="flex:1;min-width:0;'+(done?'text-decoration:line-through;color:var(--muted);':'')+'">'+esc(info)+(h.range?' ('+esc(h.range)+')':'')+'</span>'
+          +(h.due?'<span style="flex-shrink:0;font-size:11px;color:var(--muted);">'+h.due+'</span>':'')
+          +'</div>';
+      });
+    }
+    html += '</div>';
+  });
+  main.innerHTML += html;
+}
+
 function fmtDate(d){
   var y=d.getFullYear();
   var m=('0'+(d.getMonth()+1)).slice(-2);
@@ -472,6 +664,14 @@ function fmtDate(d){
   return y+'-'+m+'-'+dd;
 }
 function todayStr(){ return fmtDate(new Date()); }
+
+// 플래너 전용 '오늘' — 새벽 4시 이전은 전날로 간주
+// (학생들이 새벽에 그날 공부를 정리해 올리는 경우가 많아서)
+function plannerToday(){
+  var d = new Date();
+  if(d.getHours() < 4){ d.setDate(d.getDate() - 1); }
+  return fmtDate(d);
+}
 
 function loadPlanners(cb){
   db.ref('class_planner').once('value').then(function(snap){
@@ -482,7 +682,7 @@ function loadPlanners(cb){
 
 // 학생: 오늘 플래너 작성 + 내 지난 플래너
 function renderPlannerStudent(){
-  var today = todayStr();
+  var today = plannerToday();
   var mine = PLANNERS[MY_KEY] || {};
   var todayP = mine[today];
   var html = '';
@@ -510,20 +710,37 @@ function renderPlannerStudent(){
   document.getElementById('main').innerHTML = document.getElementById('main').innerHTML + html;
 }
 
+// 플래너 작성 중인 학습 항목 목록 [{place, subject, amount}]
+var _plannerItems = [];
+
 function plannerForm(existing){
   var e = existing || {};
   var h = '<div class="post">';
-  h += '<div style="font-weight:700;margin-bottom:10px;">📅 오늘 플래너 ('+todayStr()+')</div>';
-  h += '<label style="font-size:12px;font-weight:700;color:var(--ink2);">공부한 과목</label>';
-  h += '<input type="text" id="pl-subject" class="fld" placeholder="예: 수학, 영어" value="'+esc(e.subject||'')+'" style="width:100%;margin:4px 0 10px;padding:10px;border:1.5px solid var(--line);border-radius:8px;">';
-  h += '<label style="font-size:12px;font-weight:700;color:var(--ink2);">공부한 분량</label>';
-  h += '<input type="text" id="pl-amount" class="fld" placeholder="예: 수학 문제집 30p, 영단어 50개" value="'+esc(e.amount||'')+'" style="width:100%;margin:4px 0 10px;padding:10px;border:1.5px solid var(--line);border-radius:8px;">';
+  h += '<div style="font-weight:700;margin-bottom:12px;">📅 오늘 플래너 ('+plannerToday()+')</div>';
+
+  h += '<label style="font-size:12px;font-weight:700;color:var(--ink2);">공부한 내용</label>';
+  h += '<div style="font-size:11.5px;color:var(--muted);margin:3px 0 8px;">학원 / 자습을 골라 과목·분량을 적고 추가하세요. 여러 개 넣을 수 있어요.</div>';
+  h += '<div id="pl-items"></div>';
+
+  // 항목 입력 줄
+  h += '<div style="background:var(--cream);border-radius:10px;padding:10px;margin-bottom:12px;">';
+  h += '<div style="display:flex;gap:6px;margin-bottom:6px;">';
+  h += '<button type="button" id="pl-place-academy" class="pl-place on" onclick="setPlannerPlace(\'학원\')" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid var(--teal);background:var(--teal);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">학원</button>';
+  h += '<button type="button" id="pl-place-self" class="pl-place" onclick="setPlannerPlace(\'자습\')" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid var(--line);background:#fff;color:var(--muted);font-size:13px;font-weight:700;cursor:pointer;">자습</button>';
+  h += '</div>';
+  h += '<input type="text" id="pl-subject" class="fld" placeholder="과목 (예: 수학)" style="margin:0 0 6px;">';
+  h += '<input type="text" id="pl-amount" class="fld" placeholder="분량 (예: 쎈 30문제, 오답정리)" style="margin:0 0 8px;">';
+  h += '<button type="button" class="icon-btn" style="width:100%;" onclick="addPlannerItem()">+ 항목 추가</button>';
+  h += '</div>';
+
   h += '<label style="font-size:12px;font-weight:700;color:var(--ink2);">목표 달성도</label>';
-  h += '<select id="pl-achieve" class="fld" style="width:100%;margin:4px 0 10px;padding:10px;border:1.5px solid var(--line);border-radius:8px;">';
+  h += '<select id="pl-achieve" class="fld" style="margin:4px 0 10px;">';
   ['100%','80%','60%','40%','20% 이하'].forEach(function(o){ h+='<option'+(e.achieve===o?' selected':'')+'>'+o+'</option>'; });
   h += '</select>';
+
   h += '<label style="font-size:12px;font-weight:700;color:var(--ink2);">한 줄 소감 / 내일 계획</label>';
-  h += '<textarea id="pl-note" class="fld" placeholder="오늘 공부는 어땠나요? 내일은 뭘 할까요?" style="width:100%;margin:4px 0 10px;padding:10px;border:1.5px solid var(--line);border-radius:8px;min-height:70px;">'+esc(e.note||'')+'</textarea>';
+  h += '<textarea id="pl-note" class="fld" placeholder="오늘 공부는 어땠나요? 내일은 뭘 할까요?" style="margin:4px 0 10px;min-height:70px;">'+esc(e.note||'')+'</textarea>';
+
   h += '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">';
   h += '<button class="icon-btn" onclick="document.getElementById(\'pl-img\').click()">📷 사진 첨부</button>';
   h += '<span style="font-size:12px;color:var(--muted)" id="pl-img-count"></span>';
@@ -534,11 +751,56 @@ function plannerForm(existing){
   return h;
 }
 
+var _plannerPlace = '학원';
+function setPlannerPlace(p){
+  _plannerPlace = p;
+  var a=document.getElementById('pl-place-academy'), s=document.getElementById('pl-place-self');
+  if(a&&s){
+    var on='flex:1;padding:8px;border-radius:8px;border:1.5px solid var(--teal);background:var(--teal);color:#fff;font-size:13px;font-weight:700;cursor:pointer;';
+    var off='flex:1;padding:8px;border-radius:8px;border:1.5px solid var(--line);background:#fff;color:var(--muted);font-size:13px;font-weight:700;cursor:pointer;';
+    a.style.cssText = (p==='학원')?on:off;
+    s.style.cssText = (p==='자습')?on:off;
+  }
+}
+function addPlannerItem(){
+  var subj=(document.getElementById('pl-subject').value||'').trim();
+  var amt=(document.getElementById('pl-amount').value||'').trim();
+  if(!subj && !amt){ toast('과목이나 분량을 적어주세요'); return; }
+  _plannerItems.push({ place:_plannerPlace, subject:subj, amount:amt });
+  document.getElementById('pl-subject').value='';
+  document.getElementById('pl-amount').value='';
+  renderPlannerItems();
+}
+function removePlannerItem(i){ _plannerItems.splice(i,1); renderPlannerItems(); }
+function renderPlannerItems(){
+  var box=document.getElementById('pl-items'); if(!box) return;
+  if(!_plannerItems.length){ box.innerHTML=''; return; }
+  box.innerHTML = _plannerItems.map(function(it,i){
+    var tagBg = it.place==='학원' ? 'var(--teal)' : 'var(--gold)';
+    return '<div style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:6px;">'
+      +'<span style="flex-shrink:0;font-size:11px;font-weight:700;color:#fff;background:'+tagBg+';padding:2px 8px;border-radius:20px;">'+it.place+'</span>'
+      +'<span style="flex:1;font-size:13px;min-width:0;">'+(it.subject?'<b>'+esc(it.subject)+'</b> ':'')+esc(it.amount||'')+'</span>'
+      +'<button onclick="removePlannerItem('+i+')" style="flex-shrink:0;background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;">×</button>'
+      +'</div>';
+  }).join('');
+}
+
 function plannerBody(p){
   var h = '<div style="font-size:13.5px;line-height:1.7;">';
-  if(p.subject) h += '<div><b>과목</b> · '+esc(p.subject)+'</div>';
-  if(p.amount) h += '<div><b>분량</b> · '+esc(p.amount)+'</div>';
-  if(p.achieve) h += '<div><b>달성도</b> · '+esc(p.achieve)+'</div>';
+  // 새 구조: items 배열
+  if(p.items && p.items.length){
+    p.items.forEach(function(it){
+      var tagBg = it.place==='학원' ? 'var(--teal)' : 'var(--gold)';
+      h += '<div style="display:flex;align-items:center;gap:7px;margin-bottom:4px;">'
+        +'<span style="flex-shrink:0;font-size:10.5px;font-weight:700;color:#fff;background:'+tagBg+';padding:1px 7px;border-radius:20px;">'+esc(it.place||'')+'</span>'
+        +'<span>'+(it.subject?'<b>'+esc(it.subject)+'</b> ':'')+esc(it.amount||'')+'</span></div>';
+    });
+  } else {
+    // 옛 구조 호환 (subject/amount 단일)
+    if(p.subject) h += '<div><b>과목</b> · '+esc(p.subject)+'</div>';
+    if(p.amount) h += '<div><b>분량</b> · '+esc(p.amount)+'</div>';
+  }
+  if(p.achieve) h += '<div style="margin-top:4px;"><b>달성도</b> · '+esc(p.achieve)+'</div>';
   if(p.note) h += '<div style="margin-top:4px;white-space:pre-wrap;color:var(--ink2);">'+esc(p.note)+'</div>';
   h += '</div>';
   if(p.imgs && p.imgs.length){
@@ -565,18 +827,21 @@ function renderPlannerPreview(){
 function removePlannerImg(i){ plannerImgs.splice(i,1); renderPlannerPreview(); }
 
 function submitPlanner(){
-  var subject=(document.getElementById('pl-subject').value||'').trim();
-  var amount=(document.getElementById('pl-amount').value||'').trim();
+  // 입력칸에 남아있는 항목도 자동 포함
+  var subj=(document.getElementById('pl-subject').value||'').trim();
+  var amt=(document.getElementById('pl-amount').value||'').trim();
+  if(subj || amt){ _plannerItems.push({ place:_plannerPlace, subject:subj, amount:amt }); }
+
   var achieve=document.getElementById('pl-achieve').value;
   var note=(document.getElementById('pl-note').value||'').trim();
-  if(!subject && !amount && !note && plannerImgs.length===0){ toast('내용을 입력해 주세요'); return; }
-  var today=todayStr();
-  var p={ subject:subject, amount:amount, achieve:achieve, note:note, name:MY_NAME, at:new Date().toISOString() };
+  if(!_plannerItems.length && !note && plannerImgs.length===0){ toast('내용을 입력해 주세요'); return; }
+  var today=plannerToday();
+  var p={ items:_plannerItems.slice(), achieve:achieve, note:note, name:MY_NAME, at:new Date().toISOString() };
   if(plannerImgs.length) p.imgs=plannerImgs.slice();
   db.ref('class_planner/'+MY_KEY+'/'+today).set(p).then(function(){
     if(!PLANNERS[MY_KEY]) PLANNERS[MY_KEY]={};
     PLANNERS[MY_KEY][today]=p;
-    plannerImgs=[];
+    plannerImgs=[]; _plannerItems=[]; _plannerPlace='학원';
     _plannerEditMode=false;
     notifyTelegram('📅 플래너 제출\n'+MY_NAME+' 학생 ('+today+')');
     toast('플래너를 제출했어요');
@@ -586,18 +851,23 @@ function submitPlanner(){
 
 var _plannerEditMode = false;
 function editPlannerToday(){
-  var today=todayStr();
+  var today=plannerToday();
   var e=(PLANNERS[MY_KEY]||{})[today]||{};
   plannerImgs=(e.imgs||[]).slice();
+  // 기존 항목 복원 (옛 구조면 단일 항목으로 변환)
+  if(e.items && e.items.length){ _plannerItems = e.items.slice(); }
+  else if(e.subject || e.amount){ _plannerItems = [{ place:'학원', subject:e.subject||'', amount:e.amount||'' }]; }
+  else { _plannerItems = []; }
+  _plannerPlace='학원';
   _plannerEditMode=true;
   renderMain();
-  setTimeout(renderPlannerPreview,30);
+  setTimeout(function(){ renderPlannerItems(); renderPlannerPreview(); },30);
 }
 
 // 관리자: 날짜별 제출 현황
 var _plannerDate = null;
 function renderPlannerAdmin(){
-  var date = _plannerDate || todayStr();
+  var date = _plannerDate || plannerToday();
   // 현재 반 멤버 명단
   var members = (CLASSES[CURRENT_CLASS] && CLASSES[CURRENT_CLASS].members) ? CLASSES[CURRENT_CLASS].members : {};
   var memberKeys = Object.keys(members);
@@ -639,7 +909,7 @@ function renderPlannerAdmin(){
 }
 function setPlannerDate(d){ _plannerDate=d; renderMain(); }
 function movePlannerDate(delta){
-  var base=(_plannerDate||todayStr()).split('-');
+  var base=(_plannerDate||plannerToday()).split('-');
   var d=new Date(parseInt(base[0],10), parseInt(base[1],10)-1, parseInt(base[2],10));
   d.setDate(d.getDate()+delta);
   _plannerDate=fmtDate(d);
@@ -978,7 +1248,8 @@ function clearExamDate(){
 // ===== 시작 =====
 loadAll(function(){
   var list=myClasses();
-  if(list.length){ CURRENT_CLASS=list[0].id; }
+  // 학생은 첫 반 자동 진입, 관리자는 반 선택 화면을 먼저 보도록 자동선택 안 함
+  if(!isAdmin && list.length){ CURRENT_CLASS=list[0].id; }
   renderClassBar();
   if(CURRENT_CLASS){ loadPosts(); } else { renderMain(); }
   startClassesLive();
