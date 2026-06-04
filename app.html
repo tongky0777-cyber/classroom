@@ -96,7 +96,7 @@
 <div class="top">
   <div class="ti"><span class="mark"></span>수경수학학원<span style="font-size:12px;font-weight:600;color:rgba(255,255,255,.6);margin-left:6px;">김병진T</span></div>
   <div style="display:flex;align-items:center;gap:10px;">
-    <span class="who"><b id="who-name"></b> <span id="who-role"></span></span>
+    <span class="who"><b id="who-name"></b> <span id="who-role"></span> <a id="who-grade-edit" onclick="editMyGrade()" style="display:none;font-size:11px;color:rgba(255,255,255,.8);text-decoration:underline;cursor:pointer;margin-left:4px;"></a></span>
     <button class="logout" onclick="doLogout()">로그아웃</button>
   </div>
 </div>
@@ -130,6 +130,10 @@ var firebaseConfig = {
 if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 var db = firebase.database();
 
+// 클래스룸 데이터 접두사 (김병진=빈값, 선생님별 클래스룸은 sgh_ 등)
+var CLS_PREFIX = "";
+function CP(path){ return CLS_PREFIX + path; }   // 'class_users' → (접두사)+'class_users'
+
 var UID = localStorage.getItem('class_uid');
 var MY_NAME = localStorage.getItem('class_name');
 var MY_ROLE = localStorage.getItem('class_role') || 'student';
@@ -150,9 +154,42 @@ function notifyTelegram(text){
   }catch(e){}
 }
 
-var isAdmin = (MY_ROLE==='admin');
+var isAdmin = (MY_ROLE==='admin' || MY_ROLE==='assistant');  // 관리자 화면 접근 (선생님+조교)
+var isFullAdmin = (MY_ROLE==='admin');                        // 전체 권한 (선생님만)
+var isAssistant = (MY_ROLE==='assistant');                    // 조교
 document.getElementById('who-name').textContent = MY_NAME||'';
 document.getElementById('who-role').textContent = isAdmin ? '선생님' : '학생';
+
+// 학생: 내 학년 표시 + 수정 링크
+var MY_GRADE = '';
+if(!isAdmin && MY_KEY){
+  try{
+    db.ref(CP('class_users/')+MY_KEY).once('value').then(function(snap){
+      var u=snap.val();
+      MY_GRADE = (u && u.grade) || '';
+      var el=document.getElementById('who-grade-edit');
+      if(el){ el.style.display='inline'; el.textContent = MY_GRADE ? (MY_GRADE+' ✎') : '학년 입력'; }
+    }).catch(function(){});
+  }catch(e){}
+}
+
+var GRADE_OPTIONS = ['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3','기타'];
+function editMyGrade(){
+  if(isAdmin) return;
+  var cur = MY_GRADE || '';
+  var msg = '학년을 입력하세요 ('+GRADE_OPTIONS.join(', ')+')';
+  var g = prompt(msg, cur);
+  if(g===null) return;
+  g = g.trim();
+  if(!g){ toast('학년을 입력해 주세요'); return; }
+  if(GRADE_OPTIONS.indexOf(g)<0){ toast('정확한 학년을 입력해 주세요 (예: 초6, 중1, 고2)'); return; }
+  db.ref(CP('class_users/')+MY_KEY+'/grade').set(g).then(function(){
+    MY_GRADE = g;
+    var el=document.getElementById('who-grade-edit');
+    if(el) el.textContent = g+' ✎';
+    toast('학년을 '+g+'(으)로 바꿨어요');
+  }).catch(function(){ toast('수정 실패. 다시 시도해 주세요'); });
+}
 
 // 상태
 var CLASSES={};      // 반 목록
@@ -210,12 +247,12 @@ function closeModal(){ document.getElementById('modal').classList.remove('on'); 
 
 // ===== 데이터 로드 =====
 function loadAll(cb){
-  db.ref('class_classes').once('value').then(function(snap){
+  db.ref(CP('class_classes')).once('value').then(function(snap){
     CLASSES=snap.val()||{};
-    return db.ref('class_signups').once('value').then(function(s3){ SIGNUPS=s3.val()||{}; });
+    return db.ref(CP('class_signups')).once('value').then(function(s3){ SIGNUPS=s3.val()||{}; });
   }).then(function(){
     if(isAdmin){
-      return db.ref('class_users').once('value').then(function(s2){ USERS=s2.val()||{}; });
+      return db.ref(CP('class_users')).once('value').then(function(s2){ USERS=s2.val()||{}; });
     }
   }).then(function(){
     if(cb) cb();
@@ -227,7 +264,7 @@ var _classesLive = false;
 function startClassesLive(){
   if(_classesLive) return;
   _classesLive = true;
-  db.ref('class_classes').on('value', function(snap){
+  db.ref(CP('class_classes')).on('value', function(snap){
     CLASSES = snap.val()||{};
     if(document.getElementById('modal') && document.getElementById('modal').classList.contains('on')) return;
     var ta = document.getElementById('comp-text');
@@ -235,17 +272,17 @@ function startClassesLive(){
     renderClassBar();
     renderMain();
   });
-  db.ref('class_signups').on('value', function(snap){
+  db.ref(CP('class_signups')).on('value', function(snap){
     SIGNUPS = snap.val()||{};
     if(document.getElementById('modal') && document.getElementById('modal').classList.contains('on')) return;
     var ta = document.getElementById('comp-text');
     if(ta && ta.value && ta.value.trim().length>0) return;
     // 관리자면 반 관리 화면 갱신, 학생이면 신청 화면 갱신
-    if(isAdmin && CUR_TAB==='manage'){ renderManage(); }
+    if(isFullAdmin && CUR_TAB==='manage'){ renderManage(); }
     else if(!isAdmin && !CURRENT_CLASS){ renderClassJoin(); }
   });
   if(isAdmin){
-    db.ref('class_users').on('value', function(snap){ USERS = snap.val()||{}; });
+    db.ref(CP('class_users')).on('value', function(snap){ USERS = snap.val()||{}; });
   }
 }
 
@@ -331,7 +368,7 @@ function renderClassJoin(){
 
 // 학생: 가입 신청 (반 선택 없이)
 function requestSignup(){
-  db.ref('class_signups/'+MY_KEY).set({ name:MY_NAME, uid:UID, at:new Date().toISOString() }).then(function(){
+  db.ref(CP('class_signups/')+MY_KEY).set({ name:MY_NAME, uid:UID, at:new Date().toISOString() }).then(function(){
     if(!SIGNUPS) SIGNUPS={};
     SIGNUPS[MY_KEY]={ name:MY_NAME, uid:UID };
     notifyTelegram('🙋 가입 신청\n'+MY_NAME+' 학생이 가입 신청했어요. 반에 배정해 주세요.');
@@ -345,7 +382,7 @@ function loadPosts(){
   // 이전 반 실시간 구독 해제
   if(_postsRef){ try{ _postsRef.off(); }catch(e){} _postsRef=null; }
   if(!CURRENT_CLASS){ document.getElementById('main').innerHTML='<div class="empty">반을 선택해 주세요.</div>'; return; }
-  _postsRef = db.ref('class_posts/'+CURRENT_CLASS);
+  _postsRef = db.ref(CP('class_posts/')+CURRENT_CLASS);
   // 실시간 감지: 새 글/답변/삭제가 생기면 자동 반영
   _postsRef.on('value', function(snap){
     POSTS = snap.val()||{};
@@ -388,7 +425,7 @@ function backToClassPicker(){
 
 // ===== 메인 렌더 =====
 function renderMain(){
-  if(isAdmin && CUR_TAB==='manage'){ renderManage(); return; }
+  if(isFullAdmin && CUR_TAB==='manage'){ renderManage(); return; }
   if(!CURRENT_CLASS){
     if(isAdmin){
       renderAdminClassPicker();  // 관리자: 반 선택 화면 먼저
@@ -404,7 +441,7 @@ function renderMain(){
   html+='<div class="vtab'+(CUR_TAB==='qna'?' on':'')+'" onclick="setTab(\'qna\')">❓ 질문</div>';
   html+='<div class="vtab'+(CUR_TAB==='hw'?' on':'')+'" onclick="setTab(\'hw\')">'+(isAdmin?'📋 숙제 현황':'📋 내 숙제')+'</div>';
   html+='<div class="vtab'+(CUR_TAB==='planner'?' on':'')+'" onclick="setTab(\'planner\')">📅 플래너</div>';
-  if(isAdmin) html+='<div class="vtab'+(CUR_TAB==='manage'?' on':'')+'" onclick="setTab(\'manage\')">⚙️ 반 관리</div>';
+  if(isFullAdmin) html+='<div class="vtab'+(CUR_TAB==='manage'?' on':'')+'" onclick="setTab(\'manage\')">⚙️ 반 관리</div>';
   html+='</div>';
 
   // 숙제 탭 — 별도 렌더
@@ -513,7 +550,7 @@ function loadHomework(cb){
   try{
     db.ref('bjm_homework').once('value').then(function(s){ var v=s.val(); HW_LIST = v? (Array.isArray(v)?v:Object.values(v)) : []; step(); }).catch(step);
     db.ref('bjm_students').once('value').then(function(s){ var v=s.val(); HW_STUDENTS = v? (Array.isArray(v)?v:Object.values(v)) : []; step(); }).catch(step);
-    db.ref('class_hw_done').once('value').then(function(s){ HW_DONE = s.val()||{}; step(); }).catch(step);
+    db.ref(CP('class_hw_done')).once('value').then(function(s){ HW_DONE = s.val()||{}; step(); }).catch(step);
   }catch(e){ if(cb) cb(); }
 }
 
@@ -610,7 +647,7 @@ function renderHwStudent(){
 }
 
 function toggleHwDone(hwId, done){
-  var ref = db.ref('class_hw_done/'+hwId+'/'+MY_KEY);
+  var ref = db.ref(CP('class_hw_done/')+hwId+'/'+MY_KEY);
   if(done){
     var rec = { done:true, at:new Date().toISOString(), name:MY_NAME };
     ref.set(rec).then(function(){
@@ -705,7 +742,7 @@ function plannerToday(){
 }
 
 function loadPlanners(cb){
-  db.ref('class_planner').once('value').then(function(snap){
+  db.ref(CP('class_planner')).once('value').then(function(snap){
     PLANNERS = snap.val()||{};
     if(cb) cb();
   }).catch(function(){ if(cb) cb(); });
@@ -869,7 +906,7 @@ function submitPlanner(){
   var today=plannerToday();
   var p={ items:_plannerItems.slice(), achieve:achieve, note:note, name:MY_NAME, at:new Date().toISOString() };
   if(plannerImgs.length) p.imgs=plannerImgs.slice();
-  db.ref('class_planner/'+MY_KEY+'/'+today).set(p).then(function(){
+  db.ref(CP('class_planner/')+MY_KEY+'/'+today).set(p).then(function(){
     if(!PLANNERS[MY_KEY]) PLANNERS[MY_KEY]={};
     PLANNERS[MY_KEY][today]=p;
     plannerImgs=[]; _plannerItems=[]; _plannerPlace='학원';
@@ -1001,7 +1038,7 @@ function submitPost(type){
   var post={ uid:UID, author:MY_NAME, role:MY_ROLE, type:type, text:text, createdAt:new Date().toISOString() };
   if(uploadImgs.length) post.imgs=uploadImgs.slice();
   if(uploadFile) post.file={ name:uploadFile.name, url:uploadFile.url };
-  db.ref('class_posts/'+CURRENT_CLASS+'/'+id).set(post).then(function(){
+  db.ref(CP('class_posts/')+CURRENT_CLASS+'/'+id).set(post).then(function(){
     // 학생이 질문을 올리면 선생님 텔레그램으로 알림
     if(type==='qna' && MY_ROLE!=='admin'){
       var className = (CLASSES[CURRENT_CLASS] && CLASSES[CURRENT_CLASS].name) ? CLASSES[CURRENT_CLASS].name : '';
@@ -1017,7 +1054,7 @@ function submitPost(type){
 
 function deletePost(pid){
   if(!confirm('삭제할까요?')) return;
-  db.ref('class_posts/'+CURRENT_CLASS+'/'+pid).remove().then(function(){ toast('삭제했어요'); loadPosts(); });
+  db.ref(CP('class_posts/')+CURRENT_CLASS+'/'+pid).remove().then(function(){ toast('삭제했어요'); loadPosts(); });
 }
 
 // 글 수정 (내용 텍스트)
@@ -1038,7 +1075,7 @@ function saveEditPost(pid){
   // 사진/파일 없는 글인데 내용까지 비우면 막기
   var hasMedia = (p.imgs && p.imgs.length) || (p.file && (p.file.url || p.file.data));
   if(!text && !hasMedia){ toast('내용을 입력해 주세요'); return; }
-  db.ref('class_posts/'+CURRENT_CLASS+'/'+pid+'/text').set(text).then(function(){
+  db.ref(CP('class_posts/')+CURRENT_CLASS+'/'+pid+'/text').set(text).then(function(){
     if(POSTS[pid]) POSTS[pid].text=text;
     closeModal();
     toast('수정했어요');
@@ -1083,13 +1120,14 @@ function saveAnswer(pid){
   if(!text && _answerImgs.length===0){ toast('답변 내용을 입력해 주세요'); return; }
   var ans={ text:text, by:MY_NAME, at:new Date().toISOString() };
   if(_answerImgs.length) ans.imgs=_answerImgs.slice();
-  db.ref('class_posts/'+CURRENT_CLASS+'/'+pid+'/answer').set(ans).then(function(){
+  db.ref(CP('class_posts/')+CURRENT_CLASS+'/'+pid+'/answer').set(ans).then(function(){
     closeModal(); toast('답변을 저장했어요'); loadPosts();
   });
 }
 
 // ===== 관리자: 반 만들기 =====
 function openNewClass(){
+  if(!isFullAdmin){ toast('반 관리는 선생님만 할 수 있어요'); return; }
   var h='<h3>새 반 만들기</h3>';
   h+='<input type="text" class="fld" id="nc-name" placeholder="반 이름 (예: 고1 화목반)">';
   h+='<div style="display:flex;gap:8px;margin-top:6px;">';
@@ -1099,10 +1137,11 @@ function openNewClass(){
   openModal(h);
 }
 function createClass(){
+  if(!isFullAdmin){ toast('반 관리는 선생님만 할 수 있어요'); return; }
   var name=(document.getElementById('nc-name').value||'').trim();
   if(!name){ toast('반 이름을 입력해 주세요'); return; }
   var cid='c'+Date.now();
-  db.ref('class_classes/'+cid).set({ name:name, createdAt:new Date().toISOString(), members:{} }).then(function(){
+  db.ref(CP('class_classes/')+cid).set({ name:name, createdAt:new Date().toISOString(), members:{} }).then(function(){
     closeModal(); toast('반을 만들었어요');
     loadAll(function(){ CURRENT_CLASS=cid; CUR_TAB='manage'; renderClassBar(); renderMain(); });
   });
@@ -1110,6 +1149,7 @@ function createClass(){
 
 // ===== 관리자: 반 관리 (학생 추가/제거) =====
 function renderManage(){
+  if(!isFullAdmin){ toast('반 관리는 선생님만 할 수 있어요'); CUR_TAB='feed'; renderMain(); return; }
   if(!CURRENT_CLASS){ document.getElementById('main').innerHTML='<div class="empty">반을 선택해 주세요.</div>'; return; }
   var c=CLASSES[CURRENT_CLASS]; if(!c) return;
   var members=c.members||{};
@@ -1172,9 +1212,10 @@ function renderManage(){
 }
 // 가입 신청 학생을 특정 반에 배정 → 배정하면 신청 목록에서 자동 제거
 function assignToClass(key, cid){
+  if(!isFullAdmin){ toast('반 배정은 선생님만 할 수 있어요'); return; }
   var s=(SIGNUPS||{})[key]; if(!s) return;
-  db.ref('class_classes/'+cid+'/members/'+key).set({ name:s.name, uid:s.uid }).then(function(){
-    return db.ref('class_signups/'+key).remove();   // 배정 완료 → 신청 대기에서 제거
+  db.ref(CP('class_classes/')+cid+'/members/'+key).set({ name:s.name, uid:s.uid }).then(function(){
+    return db.ref(CP('class_signups/')+key).remove();   // 배정 완료 → 신청 대기에서 제거
   }).then(function(){
     if(SIGNUPS) delete SIGNUPS[key];
     toast(s.name+' 학생을 '+CLASSES[cid].name+'에 넣었어요');
@@ -1184,27 +1225,29 @@ function assignToClass(key, cid){
 // 가입 신청 삭제 (배정 끝났거나 거절)
 function rejectSignup(key){
   if(!confirm('이 가입 신청을 목록에서 지울까요?\n(이미 반에 넣었다면 반에서 빠지지 않아요)')) return;
-  db.ref('class_signups/'+key).remove().then(function(){
+  db.ref(CP('class_signups/')+key).remove().then(function(){
     if(SIGNUPS) delete SIGNUPS[key];
     toast('신청 목록에서 지웠어요');
     loadAll(function(){ renderManage(); });
   });
 }
 function removeMember(key){
+  if(!isFullAdmin){ toast('반 구성 변경은 선생님만 할 수 있어요'); return; }
   if(!confirm('이 학생을 반에서 빼시겠어요?')) return;
-  db.ref('class_classes/'+CURRENT_CLASS+'/members/'+key).remove().then(function(){
+  db.ref(CP('class_classes/')+CURRENT_CLASS+'/members/'+key).remove().then(function(){
     toast('빼냈어요');
     loadAll(function(){ renderManage(); });
   });
 }
 function renameClass(){
+  if(!isFullAdmin){ toast('반 이름 수정은 선생님만 할 수 있어요'); return; }
   var cid=CURRENT_CLASS;
   var c=CLASSES[cid]; if(!c) return;
   var name=prompt('반 이름을 입력하세요', c.name||'');
   if(name===null) return;
   name=name.trim();
   if(!name){ toast('반 이름을 입력해 주세요'); return; }
-  db.ref('class_classes/'+cid+'/name').set(name).then(function(){
+  db.ref(CP('class_classes/')+cid+'/name').set(name).then(function(){
     if(CLASSES[cid]) CLASSES[cid].name=name;
     toast('반 이름을 바꿨어요');
     renderClassBar(); renderManage();
@@ -1212,10 +1255,11 @@ function renameClass(){
 }
 
 function deleteClass(){
+  if(!isFullAdmin){ toast('반 삭제는 선생님만 할 수 있어요'); return; }
   if(!confirm('이 반을 삭제할까요? 올라온 자료·질문도 함께 사라져요.')) return;
   var cid=CURRENT_CLASS;
-  db.ref('class_classes/'+cid).remove();
-  db.ref('class_posts/'+cid).remove().then(function(){
+  db.ref(CP('class_classes/')+cid).remove();
+  db.ref(CP('class_posts/')+cid).remove().then(function(){
     toast('반을 삭제했어요'); CURRENT_CLASS=null; CUR_TAB='feed';
     loadAll(function(){ renderClassBar(); renderMain(); });
   });
@@ -1226,7 +1270,7 @@ var MY_EXAM = null;       // 'YYYY-MM-DD' 또는 null
 var MY_EXAM_NAME = '';    // 시험 이름
 function loadExamDate(cb){
   if(isAdmin){ if(cb) cb(); return; }  // 관리자는 D-day 없음
-  db.ref('class_users/'+MY_KEY).once('value').then(function(snap){
+  db.ref(CP('class_users/')+MY_KEY).once('value').then(function(snap){
     var u=snap.val()||{};
     MY_EXAM = u.examDate || null;
     MY_EXAM_NAME = u.examName || '';
@@ -1280,12 +1324,12 @@ function saveExamDate(){
   var d=document.getElementById('exam-date').value;
   var nm=(document.getElementById('exam-name').value||'').trim();
   if(!d){ toast('시험 첫날을 선택해 주세요'); return; }
-  db.ref('class_users/'+MY_KEY).update({ examDate:d, examName:nm }).then(function(){
+  db.ref(CP('class_users/')+MY_KEY).update({ examDate:d, examName:nm }).then(function(){
     MY_EXAM=d; MY_EXAM_NAME=nm; closeModal(); renderDdayBar(); toast('시험일을 저장했어요');
   }).catch(function(){ toast('저장 실패. 다시 시도해 주세요'); });
 }
 function clearExamDate(){
-  db.ref('class_users/'+MY_KEY).update({ examDate:null, examName:null }).then(function(){
+  db.ref(CP('class_users/')+MY_KEY).update({ examDate:null, examName:null }).then(function(){
     MY_EXAM=null; MY_EXAM_NAME=''; closeModal(); renderDdayBar(); toast('시험일을 삭제했어요');
   });
 }

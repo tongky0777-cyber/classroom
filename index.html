@@ -61,7 +61,7 @@
     <!-- 로그인 -->
     <div class="panel on" id="panel-login">
       <div class="fg"><label>이름</label><input type="text" id="li-name" placeholder="이름을 입력하세요"></div>
-      <div class="fg"><label>학년</label><select id="li-grade" class="gsel"><option value="">학년 선택</option><option>중1</option><option>중2</option><option>중3</option><option>고1</option><option>고2</option><option>고3</option><option>기타</option></select></div>
+      <div class="fg"><label>학년</label><select id="li-grade" class="gsel"><option value="">학년 선택</option><option>초3</option><option>초4</option><option>초5</option><option>초6</option><option>중1</option><option>중2</option><option>중3</option><option>고1</option><option>고2</option><option>고3</option><option>기타</option></select></div>
       <div class="fg"><label>비밀번호</label><input type="password" id="li-pw" placeholder="비밀번호"></div>
       <button class="btn" id="li-btn" onclick="doLogin()">로그인</button>
     </div>
@@ -69,7 +69,7 @@
     <!-- 가입 -->
     <div class="panel" id="panel-signup">
       <div class="fg"><label>이름</label><input type="text" id="su-name" placeholder="실명을 입력하세요"><div class="hint">선생님이 알아볼 수 있게 실명으로 적어주세요</div></div>
-      <div class="fg"><label>학년</label><select id="su-grade" class="gsel"><option value="">학년 선택</option><option>중1</option><option>중2</option><option>중3</option><option>고1</option><option>고2</option><option>고3</option><option>기타</option></select></div>
+      <div class="fg"><label>학년</label><select id="su-grade" class="gsel"><option value="">학년 선택</option><option>초3</option><option>초4</option><option>초5</option><option>초6</option><option>중1</option><option>중2</option><option>중3</option><option>고1</option><option>고2</option><option>고3</option><option>기타</option></select></div>
       <div class="fg"><label>비밀번호 만들기</label><input type="password" id="su-pw" placeholder="사용할 비밀번호"></div>
       <div class="fg"><label>비밀번호 확인</label><input type="password" id="su-pw2" placeholder="비밀번호 다시 입력"></div>
       <button class="btn" id="su-btn" onclick="doSignup()">가입하기</button>
@@ -89,6 +89,10 @@ var firebaseConfig = {
 };
 if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
 var db = firebase.database();
+
+// 클래스룸 데이터 접두사 (김병진=빈값, 선생님별 클래스룸은 sgh_ 등)
+var CLS_PREFIX = "";
+function CP(path){ return CLS_PREFIX + path; }
 
 // 자동 로그인
 if(localStorage.getItem('class_uid')){ location.href='app.html'; }
@@ -128,7 +132,7 @@ function doSignup(){
   var btn=document.getElementById('su-btn'); btn.disabled=true;
 
   // 같은 이름+학년이 이미 있으면 뒤에 A,B,C... 를 붙여 구별
-  db.ref('class_users').once('value').then(function(snap){
+  db.ref(CP('class_users')).once('value').then(function(snap){
     var all = snap.val() || {};
     // 같은 학년에서 같은 표시이름(원래이름 또는 원래이름+글자)이 쓰였는지 확인
     var sameGradeNames = {};
@@ -155,7 +159,7 @@ function doSignup(){
     var user={ uid:uid, name:finalName, baseName:name, grade:grade, pw:hashPw(pw), role:'student', createdAt:new Date().toISOString().slice(0,10) };
 
     var proceed=function(){
-      db.ref('class_users/'+key).set(user).then(function(){
+      db.ref(CP('class_users/')+key).set(user).then(function(){
         localStorage.setItem('class_uid',uid);
         localStorage.setItem('class_name',finalName);
         localStorage.setItem('class_namekey',key);
@@ -184,7 +188,7 @@ function doLogin(){
   if(!grade){ showMsg('학년을 선택하세요','err'); return; }
   var btn=document.getElementById('li-btn'); btn.disabled=true;
 
-  db.ref('class_users').once('value').then(function(snap){
+  db.ref(CP('class_users')).once('value').then(function(snap){
     var all=snap.val()||{};
     var ph=hashPw(pw);
     // 1) 새 방식 키: 이름_학년 (정확히 입력한 이름)
