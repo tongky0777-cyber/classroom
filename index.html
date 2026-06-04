@@ -226,6 +226,12 @@ function adminLogin(){
     localStorage.setItem('class_namekey','김병진');
     localStorage.setItem('class_role','admin');
     location.href='app.html';
+  } else if(id==='조교' && pw==='help1234'){
+    localStorage.setItem('class_uid','assistant');
+    localStorage.setItem('class_name','조교');
+    localStorage.setItem('class_namekey','조교');
+    localStorage.setItem('class_role','assistant');
+    location.href='app.html';
   } else {
     showMsg('관리자 정보가 맞지 않습니다','err');
   }
