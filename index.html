@@ -61,7 +61,7 @@
     <!-- 로그인 -->
     <div class="panel on" id="panel-login">
       <div class="fg"><label>이름</label><input type="text" id="li-name" placeholder="이름을 입력하세요"></div>
-      <div class="fg"><label>학년</label><select id="li-grade" class="gsel"><option value="">학년 선택</option><option>초3</option><option>초4</option><option>초5</option><option>초6</option><option>중1</option><option>중2</option><option>중3</option><option>고1</option><option>고2</option><option>고3</option><option>기타</option></select></div>
+      <div class="fg"><label>학년 <span style="font-weight:400;color:var(--muted);font-size:12px;">(같은 이름 친구가 있을 때만)</span></label><select id="li-grade" class="gsel"><option value="">선택 안 함</option><option>초3</option><option>초4</option><option>초5</option><option>초6</option><option>중1</option><option>중2</option><option>중3</option><option>고1</option><option>고2</option><option>고3</option><option>기타</option></select></div>
       <div class="fg"><label>비밀번호</label><input type="password" id="li-pw" placeholder="비밀번호"></div>
       <button class="btn" id="li-btn" onclick="doLogin()">로그인</button>
     </div>
@@ -182,32 +182,39 @@ function doSignup(){
 
 function doLogin(){
   var name=document.getElementById('li-name').value.trim();
-  var grade=document.getElementById('li-grade').value;
+  var grade=document.getElementById('li-grade').value;  // 선택사항
   var pw=document.getElementById('li-pw').value;
   if(!name||!pw){ showMsg('이름과 비밀번호를 입력하세요','err'); return; }
-  if(!grade){ showMsg('학년을 선택하세요','err'); return; }
   var btn=document.getElementById('li-btn'); btn.disabled=true;
 
   db.ref(CP('class_users')).once('value').then(function(snap){
     var all=snap.val()||{};
     var ph=hashPw(pw);
-    // 1) 새 방식 키: 이름_학년 (정확히 입력한 이름)
+    // 이름(표시이름 또는 원래이름) 일치하는 후보 모두
     var candidates=[];
     Object.keys(all).forEach(function(k){
       var u=all[k]; if(!u) return;
-      var ug=u.grade||'';
-      // 표시이름 또는 원래이름이 입력값과 일치하고 학년 일치
-      var nameMatch = (u.name===name) || (u.baseName===name);
-      // 옛 데이터(학년 없음)는 이름만 일치하면 후보 (학년 미입력 시절 가입자)
-      if(ug===grade && nameMatch) candidates.push({key:k,u:u});
-      else if(!ug && u.name===name) candidates.push({key:k,u:u});
+      if(u.name===name || u.baseName===name) candidates.push({key:k,u:u});
     });
-    if(!candidates.length){ showMsg('가입 정보가 없어요. 이름·학년을 확인하거나 "처음이에요"로 가입해 주세요.','err'); btn.disabled=false; return; }
-    // 비번 맞는 후보 찾기
+    if(!candidates.length){ showMsg('가입 정보가 없어요. 이름을 확인하거나 "처음이에요"로 가입해 주세요.','err'); btn.disabled=false; return; }
+    // 비번 맞는 후보
     var hit=candidates.filter(function(c){ return c.u.pw===ph; });
     if(!hit.length){ showMsg('비밀번호가 맞지 않습니다','err'); btn.disabled=false; return; }
-    // 동명이인+같은학년+같은비번이 여러 명이면(드묾) 이름이 정확히 일치하는 걸 우선
-    var pick = hit.find(function(c){ return c.u.name===name; }) || hit[0];
+
+    var pick;
+    if(hit.length===1){
+      pick = hit[0];   // 한 명이면 학년 없이 바로 로그인
+    } else {
+      // 이름+비번이 겹치는 사람이 여럿 → 학년으로 구분 필요
+      if(!grade){
+        showMsg('같은 이름의 친구가 있어요. 학년을 선택해 주세요.','err');
+        btn.disabled=false; return;
+      }
+      var byGrade = hit.filter(function(c){ return (c.u.grade||'')===grade; });
+      if(!byGrade.length){ showMsg('그 학년의 가입 정보가 없어요. 학년을 확인해 주세요.','err'); btn.disabled=false; return; }
+      // 학년까지 같고 이름 정확히 일치하는 걸 우선
+      pick = byGrade.find(function(c){ return c.u.name===name; }) || byGrade[0];
+    }
     var u=pick.u;
     localStorage.setItem('class_uid',u.uid);
     localStorage.setItem('class_name',u.name);
