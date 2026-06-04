@@ -31,6 +31,8 @@
   .fg label{display:block;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:7px;}
   .fg input{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:13px 15px;font-size:16px;font-family:var(--sans);transition:.2s;}
   .fg input:focus{outline:none;border-color:var(--teal);}
+  .gsel{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:13px 15px;font-size:16px;font-family:var(--sans);background:#fff;color:var(--ink);cursor:pointer;}
+  .gsel:focus{outline:none;border-color:var(--teal);}
   .hint{font-size:12px;color:var(--muted);margin-top:6px;}
   .btn{width:100%;background:var(--teal);color:#fff;border:none;border-radius:30px;padding:15px;font-size:16px;font-weight:700;cursor:pointer;transition:.25s;font-family:var(--sans);margin-top:6px;}
   .btn:active{background:var(--deep);}
@@ -59,6 +61,7 @@
     <!-- 로그인 -->
     <div class="panel on" id="panel-login">
       <div class="fg"><label>이름</label><input type="text" id="li-name" placeholder="이름을 입력하세요"></div>
+      <div class="fg"><label>학년</label><select id="li-grade" class="gsel"><option value="">학년 선택</option><option>중1</option><option>중2</option><option>중3</option><option>고1</option><option>고2</option><option>고3</option><option>기타</option></select></div>
       <div class="fg"><label>비밀번호</label><input type="password" id="li-pw" placeholder="비밀번호"></div>
       <button class="btn" id="li-btn" onclick="doLogin()">로그인</button>
     </div>
@@ -66,6 +69,7 @@
     <!-- 가입 -->
     <div class="panel" id="panel-signup">
       <div class="fg"><label>이름</label><input type="text" id="su-name" placeholder="실명을 입력하세요"><div class="hint">선생님이 알아볼 수 있게 실명으로 적어주세요</div></div>
+      <div class="fg"><label>학년</label><select id="su-grade" class="gsel"><option value="">학년 선택</option><option>중1</option><option>중2</option><option>중3</option><option>고1</option><option>고2</option><option>고3</option><option>기타</option></select></div>
       <div class="fg"><label>비밀번호 만들기</label><input type="password" id="su-pw" placeholder="사용할 비밀번호"></div>
       <div class="fg"><label>비밀번호 확인</label><input type="password" id="su-pw2" placeholder="비밀번호 다시 입력"></div>
       <button class="btn" id="su-btn" onclick="doSignup()">가입하기</button>
@@ -114,44 +118,96 @@ function hashPw(pw){
 
 function doSignup(){
   var name=document.getElementById('su-name').value.trim();
+  var grade=document.getElementById('su-grade').value;
   var pw=document.getElementById('su-pw').value;
   var pw2=document.getElementById('su-pw2').value;
   if(!name){ showMsg('이름을 입력하세요','err'); return; }
+  if(!grade){ showMsg('학년을 선택하세요','err'); return; }
   if(pw.length<4){ showMsg('비밀번호는 4자 이상으로 만들어주세요','err'); return; }
   if(pw!==pw2){ showMsg('비밀번호가 일치하지 않습니다','err'); return; }
-  var key=nameKey(name);
   var btn=document.getElementById('su-btn'); btn.disabled=true;
-  db.ref('class_users/'+key).once('value').then(function(snap){
-    if(snap.exists()){
-      showMsg('이미 같은 이름으로 가입되어 있어요. 로그인해 주세요.','err');
-      btn.disabled=false; return;
+
+  // 같은 이름+학년이 이미 있으면 뒤에 A,B,C... 를 붙여 구별
+  db.ref('class_users').once('value').then(function(snap){
+    var all = snap.val() || {};
+    // 같은 학년에서 같은 표시이름(원래이름 또는 원래이름+글자)이 쓰였는지 확인
+    var sameGradeNames = {};
+    Object.keys(all).forEach(function(k){
+      var u=all[k];
+      if(u && (u.grade||'')===grade && u.baseName===name){ sameGradeNames[u.name]=true; }
+      // 옛 데이터(baseName 없음) 호환: name이 정확히 같고 학년 정보 없을 때도 충돌로 간주
+      else if(u && !u.baseName && u.name===name && (u.grade||'')===grade){ sameGradeNames[u.name]=true; }
+    });
+
+    var finalName = name;
+    if(sameGradeNames[name]){
+      var suffixes='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      for(var i=0;i<suffixes.length;i++){
+        if(!sameGradeNames[name+suffixes[i]]){ finalName=name+suffixes[i]; break; }
+      }
+    }
+
+    var key=nameKey(finalName+'_'+grade);
+    if(all[key]){ // 혹시 키 충돌(이론상 거의 없음)
+      showMsg('잠시 후 다시 시도해 주세요','err'); btn.disabled=false; return;
     }
     var uid='u'+Date.now();
-    var user={ uid:uid, name:name, pw:hashPw(pw), role:'student', createdAt:new Date().toISOString().slice(0,10) };
-    db.ref('class_users/'+key).set(user).then(function(){
-      localStorage.setItem('class_uid',uid);
-      localStorage.setItem('class_name',name);
-      localStorage.setItem('class_namekey',key);
-      localStorage.setItem('class_role','student');
-      localStorage.setItem('class_last_name',name);
-      location.href='app.html';
-    });
+    var user={ uid:uid, name:finalName, baseName:name, grade:grade, pw:hashPw(pw), role:'student', createdAt:new Date().toISOString().slice(0,10) };
+
+    var proceed=function(){
+      db.ref('class_users/'+key).set(user).then(function(){
+        localStorage.setItem('class_uid',uid);
+        localStorage.setItem('class_name',finalName);
+        localStorage.setItem('class_namekey',key);
+        localStorage.setItem('class_role','student');
+        localStorage.setItem('class_last_name',finalName);
+        location.href='app.html';
+      });
+    };
+
+    if(finalName!==name){
+      showMsg('같은 학년에 동명이인이 있어 "'+finalName+'"(으)로 가입돼요. 다음부터 이 이름으로 로그인하세요.','ok');
+      btn.disabled=false;
+      btn.textContent='"'+finalName+'"로 가입하기';
+      btn.onclick=function(){ btn.disabled=true; proceed(); };
+    } else {
+      proceed();
+    }
   }).catch(function(e){ showMsg('오류가 발생했습니다. 다시 시도해주세요.','err'); btn.disabled=false; });
 }
 
 function doLogin(){
   var name=document.getElementById('li-name').value.trim();
+  var grade=document.getElementById('li-grade').value;
   var pw=document.getElementById('li-pw').value;
   if(!name||!pw){ showMsg('이름과 비밀번호를 입력하세요','err'); return; }
-  var key=nameKey(name);
+  if(!grade){ showMsg('학년을 선택하세요','err'); return; }
   var btn=document.getElementById('li-btn'); btn.disabled=true;
-  db.ref('class_users/'+key).once('value').then(function(snap){
-    var u=snap.val();
-    if(!u){ showMsg('가입 정보가 없어요. "처음이에요"로 가입해 주세요.','err'); btn.disabled=false; return; }
-    if(u.pw!==hashPw(pw)){ showMsg('비밀번호가 맞지 않습니다','err'); btn.disabled=false; return; }
+
+  db.ref('class_users').once('value').then(function(snap){
+    var all=snap.val()||{};
+    var ph=hashPw(pw);
+    // 1) 새 방식 키: 이름_학년 (정확히 입력한 이름)
+    var candidates=[];
+    Object.keys(all).forEach(function(k){
+      var u=all[k]; if(!u) return;
+      var ug=u.grade||'';
+      // 표시이름 또는 원래이름이 입력값과 일치하고 학년 일치
+      var nameMatch = (u.name===name) || (u.baseName===name);
+      // 옛 데이터(학년 없음)는 이름만 일치하면 후보 (학년 미입력 시절 가입자)
+      if(ug===grade && nameMatch) candidates.push({key:k,u:u});
+      else if(!ug && u.name===name) candidates.push({key:k,u:u});
+    });
+    if(!candidates.length){ showMsg('가입 정보가 없어요. 이름·학년을 확인하거나 "처음이에요"로 가입해 주세요.','err'); btn.disabled=false; return; }
+    // 비번 맞는 후보 찾기
+    var hit=candidates.filter(function(c){ return c.u.pw===ph; });
+    if(!hit.length){ showMsg('비밀번호가 맞지 않습니다','err'); btn.disabled=false; return; }
+    // 동명이인+같은학년+같은비번이 여러 명이면(드묾) 이름이 정확히 일치하는 걸 우선
+    var pick = hit.find(function(c){ return c.u.name===name; }) || hit[0];
+    var u=pick.u;
     localStorage.setItem('class_uid',u.uid);
     localStorage.setItem('class_name',u.name);
-    localStorage.setItem('class_namekey',key);
+    localStorage.setItem('class_namekey',pick.key);
     localStorage.setItem('class_role',u.role||'student');
     localStorage.setItem('class_last_name',u.name);
     location.href='app.html';
