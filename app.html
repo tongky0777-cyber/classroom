@@ -1090,7 +1090,7 @@ function renderManage(){
   html+='</div>';
 
   // 반 정보
-  html+='<div class="adm-section"><h3>'+esc(c.name)+' <button class="mini-btn" style="background:var(--red);" onclick="deleteClass()">반 삭제</button></h3>';
+  html+='<div class="adm-section"><h3>'+esc(c.name)+' <button class="mini-btn" onclick="renameClass()">이름 수정</button> <button class="mini-btn" style="background:var(--red);" onclick="deleteClass()">반 삭제</button></h3>';
   html+='<div style="font-size:13px;color:var(--muted);">학생 '+Object.keys(members).length+'명</div></div>';
 
   // 현재 반 학생
@@ -1166,13 +1166,27 @@ function removeMember(key){
     loadAll(function(){ renderManage(); });
   });
 }
+function renameClass(){
+  var cid=CURRENT_CLASS;
+  var c=CLASSES[cid]; if(!c) return;
+  var name=prompt('반 이름을 입력하세요', c.name||'');
+  if(name===null) return;
+  name=name.trim();
+  if(!name){ toast('반 이름을 입력해 주세요'); return; }
+  db.ref('class_classes/'+cid+'/name').set(name).then(function(){
+    if(CLASSES[cid]) CLASSES[cid].name=name;
+    toast('반 이름을 바꿨어요');
+    renderClassBar(); renderManage();
+  }).catch(function(){ toast('실패. 다시 시도해 주세요'); });
+}
+
 function deleteClass(){
   if(!confirm('이 반을 삭제할까요? 올라온 자료·질문도 함께 사라져요.')) return;
   var cid=CURRENT_CLASS;
   db.ref('class_classes/'+cid).remove();
   db.ref('class_posts/'+cid).remove().then(function(){
     toast('반을 삭제했어요'); CURRENT_CLASS=null; CUR_TAB='feed';
-    loadAll(function(){ var l=myClasses(); CURRENT_CLASS=l.length?l[0].id:null; renderClassBar(); renderMain(); });
+    loadAll(function(){ renderClassBar(); renderMain(); });
   });
 }
 
