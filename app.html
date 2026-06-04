@@ -536,6 +536,15 @@ function hwForSid(h, sid){
 }
 
 function isHwDone(hwId, key){
+  // 1) 학생이 클래스룸에서 직접 체크한 경우
+  if(HW_DONE[hwId] && HW_DONE[hwId][key] && HW_DONE[hwId][key].done) return true;
+  // 2) 선생님이 대시보드에서 '제출 완료'로 바꾼 경우
+  var h = HW_LIST.find(function(x){ return x.id===hwId; });
+  if(h && h.status==='done') return true;
+  return false;
+}
+// 학생이 직접 체크했는지만 (완료 취소 버튼 표시용)
+function isHwCheckedByStudent(hwId, key){
   return !!(HW_DONE[hwId] && HW_DONE[hwId][key] && HW_DONE[hwId][key].done);
 }
 
@@ -548,8 +557,6 @@ function renderHwStudent(){
     return;
   }
   var mine = HW_LIST.filter(function(h){ return hwForSid(h, sid); });
-  // 미완료 먼저, 그다음 완료. 마감일 순
-  mine.sort(function(a,b){ return (a.due||'').localeCompare(b.due||''); });
   var doneCnt = mine.filter(function(h){ return isHwDone(h.id, MY_KEY); }).length;
 
   var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
@@ -559,28 +566,34 @@ function renderHwStudent(){
   if(!mine.length){ main.innerHTML += html + '<div class="empty">아직 받은 숙제가 없어요.</div>'; return; }
 
   var today = todayStr();
-  // 미완료 → 완료 순
-  mine.sort(function(a,b){
-    var da=isHwDone(a.id,MY_KEY)?1:0, db_=isHwDone(b.id,MY_KEY)?1:0;
-    if(da!==db_) return da-db_;
-    return (a.due||'').localeCompare(b.due||'');
-  });
+  // 마감일 최신순 (늦은 마감일이 맨 위, 오래된 것이 아래로)
+  mine.sort(function(a,b){ return (b.due||'').localeCompare(a.due||''); });
 
   mine.forEach(function(h){
     var done = isHwDone(h.id, MY_KEY);
+    var byStudent = isHwCheckedByStudent(h.id, MY_KEY);
     var info = [h.book, h.unit].filter(Boolean).join(' · ');
     var range = h.range||'';
     var overdue = h.due && h.due<today && !done;
     if(done){
-      var at = (HW_DONE[h.id][MY_KEY].at||'').replace('T',' ').slice(0,16);
+      var doneLabel, btn;
+      if(byStudent){
+        var at = (HW_DONE[h.id] && HW_DONE[h.id][MY_KEY] && HW_DONE[h.id][MY_KEY].at || '').replace('T',' ').slice(0,16);
+        doneLabel = '완료함'+(at?' · '+at:'');
+        btn = '<button class="icon-btn" style="margin-top:8px;padding:5px 12px;font-size:12px;" onclick="toggleHwDone(\''+h.id+'\',false)">완료 취소</button>';
+      } else {
+        // 선생님이 제출 확인한 경우 (학생이 취소할 수 없음)
+        doneLabel = '선생님 확인 완료';
+        btn = '';
+      }
       html += '<div style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;opacity:.6;">'
         +'<div style="display:flex;align-items:flex-start;gap:10px;">'
         +'<div style="width:22px;height:22px;border-radius:6px;background:var(--teal);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;">✓</div>'
         +'<div style="flex:1;min-width:0;">'
         +'<div style="font-size:13.5px;font-weight:700;text-decoration:line-through;">'+esc(info||h.name||'숙제')+'</div>'
         +(range?'<div style="font-size:12px;color:var(--muted);margin-top:3px;">'+esc(range)+(h.due?' · '+h.due+'까지':'')+'</div>':'')
-        +'<div style="font-size:11px;color:var(--teal);margin-top:4px;">완료함'+(at?' · '+at:'')+'</div>'
-        +'<button class="icon-btn" style="margin-top:8px;padding:5px 12px;font-size:12px;" onclick="toggleHwDone(\''+h.id+'\',false)">완료 취소</button>'
+        +'<div style="font-size:11px;color:var(--teal);margin-top:4px;">'+doneLabel+'</div>'
+        +btn
         +'</div></div></div>';
     } else {
       html += '<div style="background:#fff;border:1.5px solid '+(overdue?'#c0392b':'var(--gold)')+';border-radius:14px;padding:14px;margin-bottom:10px;">'
@@ -603,6 +616,7 @@ function toggleHwDone(hwId, done){
     ref.set(rec).then(function(){
       if(!HW_DONE[hwId]) HW_DONE[hwId]={};
       HW_DONE[hwId][MY_KEY]=rec;
+      syncHwStatusToDashboard(hwId, 'done');
       notifyTelegram('✅ 숙제 완료\n'+MY_NAME+' 학생');
       toast('완료 체크했어요'); renderMain();
     }).catch(function(){ toast('실패. 다시 시도해 주세요'); });
@@ -610,9 +624,26 @@ function toggleHwDone(hwId, done){
     ref.set({ done:false, at:new Date().toISOString(), name:MY_NAME }).then(function(){
       if(!HW_DONE[hwId]) HW_DONE[hwId]={};
       HW_DONE[hwId][MY_KEY]={done:false};
+      syncHwStatusToDashboard(hwId, 'pending');
       toast('완료를 취소했어요'); renderMain();
     }).catch(function(){ toast('실패. 다시 시도해 주세요'); });
   }
+}
+
+// 학생 체크 → 대시보드 숙제(bjm_homework) status 반영
+// bjm_homework는 배열이라 전체를 읽어 해당 항목만 고쳐 다시 씀
+function syncHwStatusToDashboard(hwId, status){
+  try{
+    db.ref('bjm_homework').once('value').then(function(s){
+      var v=s.val(); if(!v) return;
+      var arr = Array.isArray(v) ? v : Object.values(v);
+      var changed=false;
+      for(var i=0;i<arr.length;i++){
+        if(arr[i] && arr[i].id===hwId){ arr[i].status=status; changed=true; break; }
+      }
+      if(changed){ db.ref('bjm_homework').set(arr); }
+    });
+  }catch(e){}
 }
 
 // 관리자: 이 반 학생들의 숙제 현황
@@ -641,7 +672,7 @@ function renderHwAdmin(){
     } else if(!mine.length){
       html += '<div style="font-size:12px;color:var(--muted);">받은 숙제가 없어요.</div>';
     } else {
-      mine.sort(function(a,b){ return (a.due||'').localeCompare(b.due||''); });
+      mine.sort(function(a,b){ return (b.due||'').localeCompare(a.due||''); });
       mine.forEach(function(h){
         var done=isHwDone(h.id,k);
         var info=[h.book,h.unit].filter(Boolean).join(' · ')||h.name||'숙제';
