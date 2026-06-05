@@ -72,11 +72,13 @@
   .modal.on{display:flex;}
   .modal-box{background:#fff;border-radius:16px;padding:24px;max-width:400px;width:100%;max-height:85vh;overflow-y:auto;}
   .modal-box h3{font-size:18px;font-weight:800;margin-bottom:16px;}
-  .modal-photo{display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:200;align-items:center;justify-content:center;padding:16px;overflow:auto;}
+  .modal-photo{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:200;align-items:center;justify-content:center;padding:0;overflow:auto;-webkit-overflow-scrolling:touch;}
   .modal-photo.on{display:flex;}
-  .modal-photo img{max-width:100%;max-height:90vh;object-fit:contain;border-radius:8px;cursor:zoom-in;transition:max-width .15s,max-height .15s;}
-  .modal-photo img.zoomed{max-width:none;max-height:none;width:auto;cursor:zoom-out;border-radius:0;}
-  .modal-photo .close-x{position:fixed;top:16px;right:20px;color:#fff;font-size:32px;cursor:pointer;z-index:201;}
+  .modal-photo img{max-width:100%;max-height:100vh;object-fit:contain;cursor:zoom-in;display:block;margin:auto;}
+  .modal-photo.zoomed{align-items:flex-start;justify-content:flex-start;}
+  .modal-photo.zoomed img{max-width:none;max-height:none;width:200%;height:auto;object-fit:fill;cursor:zoom-out;margin:0;}
+  .modal-photo .close-x{position:fixed;top:14px;right:18px;color:#fff;font-size:34px;line-height:1;cursor:pointer;z-index:201;text-shadow:0 1px 4px rgba(0,0,0,.6);}
+  .modal-photo .zoom-hint{position:fixed;bottom:18px;left:0;right:0;text-align:center;color:#fff;font-size:12px;opacity:.75;z-index:201;pointer-events:none;}
   /* 관리자: 학생/반 관리 */
   .adm-section{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px;}
   .adm-section h3{font-size:15px;font-weight:800;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;}
@@ -111,7 +113,8 @@
 <!-- 사진 크게보기 -->
 <div class="modal-photo" id="photoModal" onclick="closePhoto()">
   <span class="close-x">&times;</span>
-  <img id="photoBig" src="" alt="" onclick="event.stopPropagation();togglePhotoZoom(this);">
+  <img id="photoBig" src="" alt="" onclick="event.stopPropagation();togglePhotoZoom();">
+  <div class="zoom-hint" id="zoomHint">사진을 탭하면 확대 · 다시 탭하면 축소</div>
 </div>
 
 <!-- 범용 모달 -->
@@ -250,9 +253,22 @@ function compressImage(file, cb){
   reader.readAsDataURL(file);
 }
 
-function openPhoto(src){ var big=document.getElementById('photoBig'); big.src=src; big.classList.remove('zoomed'); document.getElementById('photoModal').classList.add('on'); }
-function closePhoto(){ document.getElementById('photoModal').classList.remove('on'); }
-function togglePhotoZoom(img){ img.classList.toggle('zoomed'); }
+function openPhoto(src){
+  var big=document.getElementById('photoBig'); big.src=src;
+  var modal=document.getElementById('photoModal');
+  modal.classList.remove('zoomed');
+  var hint=document.getElementById('zoomHint'); if(hint){ hint.textContent='사진을 탭하면 확대 · 다시 탭하면 축소'; hint.style.display='block'; }
+  modal.classList.add('on');
+}
+function closePhoto(){ var m=document.getElementById('photoModal'); m.classList.remove('on'); m.classList.remove('zoomed'); }
+function togglePhotoZoom(){
+  var modal=document.getElementById('photoModal');
+  modal.classList.toggle('zoomed');
+  var zoomed=modal.classList.contains('zoomed');
+  var hint=document.getElementById('zoomHint');
+  if(zoomed){ modal.scrollLeft = (modal.scrollWidth-modal.clientWidth)/2; if(hint) hint.textContent='밀어서 이동 · 탭하면 원래대로'; }
+  else { modal.scrollTop=0; modal.scrollLeft=0; if(hint) hint.textContent='사진을 탭하면 확대 · 다시 탭하면 축소'; }
+}
 function openModal(html){ document.getElementById('modalBox').innerHTML=html; document.getElementById('modal').classList.add('on'); }
 function closeModal(){ document.getElementById('modal').classList.remove('on'); }
 
