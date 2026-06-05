@@ -405,18 +405,28 @@ function requestSignup(){
 }
 
 var _postsRef = null;  // 현재 구독 중인 Firebase 참조
+var _reactRef = null;  // 반응 실시간 구독 참조
 function loadPosts(){
   // 이전 반 실시간 구독 해제
   if(_postsRef){ try{ _postsRef.off(); }catch(e){} _postsRef=null; }
+  if(_reactRef){ try{ _reactRef.off(); }catch(e){} _reactRef=null; }
   if(!CURRENT_CLASS){ document.getElementById('main').innerHTML='<div class="empty">반을 선택해 주세요.</div>'; return; }
   _postsRef = db.ref(CP('class_posts/')+CURRENT_CLASS);
   // 실시간 감지: 새 글/답변/삭제가 생기면 자동 반영
   _postsRef.on('value', function(snap){
     POSTS = snap.val()||{};
-    // 작성칸에 입력 중이면 화면을 다시 안 그림(깜빡임/입력 손실 방지)
     var ta = document.getElementById('comp-text');
     if(ta && ta.value && ta.value.trim().length>0){ return; }
-    // 모달(답변 작성 등)이 열려 있으면 다시 안 그림
+    if(document.getElementById('modal') && document.getElementById('modal').classList.contains('on')){ return; }
+    renderMain();
+  });
+  // 반응도 실시간 구독
+  _reactRef = db.ref(CP('class_reactions'));
+  _reactRef.on('value', function(snap){
+    REACTIONS = snap.val()||{};
+    if(_reactPickerEl) return; // 선택 바 떠있으면 그대로
+    var ta = document.getElementById('comp-text');
+    if(ta && ta.value && ta.value.trim().length>0){ return; }
     if(document.getElementById('modal') && document.getElementById('modal').classList.contains('on')){ return; }
     renderMain();
   });
@@ -545,6 +555,12 @@ function postHtml(p){
     var furl = p.file.url || p.file.data;
     h+='<a class="post-file" href="'+furl+'" target="_blank" rel="noopener">🔗 '+esc(p.file.name)+'</a>';
   }
+  // 게시물 반응 (길게 누르기/버튼) — 카톡식
+  var rid='post_'+p.id;
+  h+='<div class="react-row" oncontextmenu="reactBtn(event,\''+rid+'\');return false;" ontouchstart="reactPressStart(event,\''+rid+'\')" ontouchend="reactPressEnd()" ontouchmove="reactPressEnd()" onmousedown="reactPressStart(event,\''+rid+'\')" onmouseup="reactPressEnd()" onmouseleave="reactPressEnd()" style="margin-top:8px;display:flex;align-items:center;gap:8px;">';
+  h+='<button class="react-add" onclick="reactBtn(event,\''+rid+'\')" title="반응" style="background:none;border:none;cursor:pointer;font-size:15px;color:var(--muted);padding:2px 4px;">🙂﹢</button>';
+  h+=renderReactionChips(rid);
+  h+='</div>';
   // 질문의 답변
   if(p.type==='qna'){
     if(p.answer){
@@ -555,6 +571,12 @@ function postHtml(p){
         p.answer.imgs.forEach(function(src){ h+='<img src="'+src+'" onclick="openPhoto(this.src)">'; });
         h+='</div>';
       }
+      // 답변 반응
+      var arid='answer_'+p.id;
+      h+='<div class="react-row" oncontextmenu="reactBtn(event,\''+arid+'\');return false;" ontouchstart="reactPressStart(event,\''+arid+'\')" ontouchend="reactPressEnd()" ontouchmove="reactPressEnd()" onmousedown="reactPressStart(event,\''+arid+'\')" onmouseup="reactPressEnd()" onmouseleave="reactPressEnd()" style="margin-top:8px;display:flex;align-items:center;gap:8px;">';
+      h+='<button class="react-add" onclick="reactBtn(event,\''+arid+'\')" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--muted);padding:2px 4px;">🙂﹢</button>';
+      h+=renderReactionChips(arid);
+      h+='</div>';
       h+='</div>';
     }
     if(isAdmin){
@@ -771,10 +793,13 @@ function plannerToday(){
 function loadPlanners(cb){
   db.ref(CP('class_planner')).once('value').then(function(snap){
     PLANNERS = snap.val()||{};
-    // 응원 데이터도 함께 로드
     db.ref(CP('class_cheer')).once('value').then(function(s2){
       CHEERS = s2.val()||{};
-      if(cb) cb();
+      // 반응 데이터도 함께 로드
+      db.ref(CP('class_reactions')).once('value').then(function(s3){
+        REACTIONS = s3.val()||{};
+        if(cb) cb();
+      }).catch(function(){ if(cb) cb(); });
     }).catch(function(){ if(cb) cb(); });
   }).catch(function(){ if(cb) cb(); });
 }
@@ -900,11 +925,17 @@ function renderPlannerShare(today){
       } else {
         html += '<div style="font-size:12px;color:var(--muted);">기록한 항목이 없어요</div>';
       }
-      // 응원 버튼 (본인 카드엔 안 보임)
+      // 카톡식 반응 — 길게 누르기/버튼. 본인 카드엔 누르기 버튼 없이 칩만
+      var prid='planner_'+key+'_'+today;
       if(key!==MY_KEY){
-        html += renderCheerButtons(today, key);
+        html += '<div class="react-row" oncontextmenu="reactBtn(event,\''+prid+'\');return false;" ontouchstart="reactPressStart(event,\''+prid+'\')" ontouchend="reactPressEnd()" ontouchmove="reactPressEnd()" onmousedown="reactPressStart(event,\''+prid+'\')" onmouseup="reactPressEnd()" onmouseleave="reactPressEnd()" style="margin-top:9px;border-top:1px solid var(--line);padding-top:9px;display:flex;align-items:center;gap:8px;">';
+        html += '<button class="react-add" onclick="reactBtn(event,\''+prid+'\')" title="응원" style="background:none;border:none;cursor:pointer;font-size:15px;color:var(--muted);padding:2px 4px;">🙂﹢</button>';
+        html += renderReactionChips(prid);
+        html += '</div>';
       } else {
-        html += renderCheerSummary(today, key);
+        // 내 카드: 받은 반응만 보여줌
+        var chips = renderReactionChips(prid);
+        html += '<div style="margin-top:9px;border-top:1px solid var(--line);padding-top:9px;font-size:12px;color:var(--muted);">받은 응원'+(chips||' <span style="font-size:11px;">아직 없어요</span>')+'</div>';
       }
     } else {
       html += '<div style="font-size:12px;color:var(--muted);">아직 오늘 플래너를 작성하지 않았어요</div>';
@@ -958,7 +989,6 @@ function sendCheer(date, targetKey, cheerKey){
   if(!CHEERS[date]) CHEERS[date]={};
   if(!CHEERS[date][targetKey]) CHEERS[date][targetKey]={};
   if(cur===cheerKey){
-    // 같은 거 다시 → 취소
     db.ref(path).remove();
     delete CHEERS[date][targetKey][MY_KEY];
   } else {
@@ -967,6 +997,97 @@ function sendCheer(date, targetKey, cheerKey){
   }
   renderMain();
 }
+
+// ===================== 범용 카톡식 반응 시스템 =====================
+// 어떤 대상이든 reactionId(예: 'planner_홍_고1_2026-06-04', 'post_p1', 'answer_p1')로 반응 저장
+// 데이터: class_reactions/{reactionId}/{누른사람키} = 이모티콘key
+var REACTIONS = {};   // {reactionId: {senderKey: emojiKey}}
+
+function loadReactions(cb){
+  db.ref(CP('class_reactions')).once('value').then(function(snap){
+    REACTIONS = snap.val()||{};
+    if(cb) cb();
+  }).catch(function(){ if(cb) cb(); });
+}
+
+// 길게 누르기(모바일) / 버튼(PC) → 이모티콘 선택 바 띄우기
+var _reactPickerEl = null;
+function openReactionPicker(reactionId, anchorEl){
+  closeReactionPicker();
+  var mine = (REACTIONS[reactionId]||{})[MY_KEY] || null;
+  var bar = document.createElement('div');
+  bar.className = 'react-picker';
+  bar.style.cssText = 'position:fixed;z-index:600;display:flex;gap:6px;background:#fff;border:1px solid var(--line);border-radius:24px;padding:7px 11px;box-shadow:0 6px 20px rgba(0,0,0,.18);';
+  CHEER_LIST.forEach(function(p){
+    var key=p[0];
+    var on = (mine===key);
+    var b = document.createElement('button');
+    b.style.cssText = 'width:40px;height:40px;border-radius:50%;border:'+(on?'2px solid var(--teal)':'none')+';background:'+(on?'var(--teal-bg,#e6f2ee)':'transparent')+';padding:0;cursor:pointer;';
+    b.innerHTML = '<img src="'+CHEER_IMGS[key]+'" style="width:32px;height:32px;border-radius:6px;object-fit:cover;">';
+    b.onclick = function(ev){ ev.stopPropagation(); toggleReaction(reactionId, key); closeReactionPicker(); };
+    bar.appendChild(b);
+  });
+  document.body.appendChild(bar);
+  _reactPickerEl = bar;
+  // 위치: 앵커 위쪽 중앙
+  var r = anchorEl.getBoundingClientRect();
+  var bw = bar.offsetWidth, bh = bar.offsetHeight;
+  var left = Math.min(Math.max(8, r.left + r.width/2 - bw/2), window.innerWidth - bw - 8);
+  var top = r.top - bh - 8;
+  if(top < 8) top = r.bottom + 8;  // 위 공간 없으면 아래로
+  bar.style.left = left+'px';
+  bar.style.top = top+'px';
+  setTimeout(function(){ document.addEventListener('click', closeReactionPicker, {once:true}); }, 10);
+}
+function closeReactionPicker(){
+  if(_reactPickerEl){ try{ _reactPickerEl.remove(); }catch(e){} _reactPickerEl=null; }
+}
+
+function toggleReaction(reactionId, emojiKey){
+  var path = CP('class_reactions/')+reactionId+'/'+MY_KEY;
+  var cur = (REACTIONS[reactionId]||{})[MY_KEY] || null;
+  if(!REACTIONS[reactionId]) REACTIONS[reactionId]={};
+  if(cur===emojiKey){
+    db.ref(path).remove();
+    delete REACTIONS[reactionId][MY_KEY];
+  } else {
+    db.ref(path).set(emojiKey);
+    REACTIONS[reactionId][MY_KEY]=emojiKey;
+  }
+  renderMain();
+}
+
+// 대상에 붙은 반응들을 작게 표시 (고른 것만 모여 보임)
+function renderReactionChips(reactionId){
+  var rs = REACTIONS[reactionId] || {};
+  var senders = Object.keys(rs);
+  if(!senders.length) return '';
+  // 이모티콘별 카운트 + 내가 누른 것
+  var counts={}; CHEER_LIST.forEach(function(p){ counts[p[0]]=0; });
+  senders.forEach(function(s){ var k=rs[s]; if(counts[k]!=null) counts[k]++; });
+  var mine = rs[MY_KEY] || null;
+  var h = '<div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:8px;">';
+  CHEER_LIST.forEach(function(p){
+    var key=p[0]; if(!counts[key]) return;
+    var on = (mine===key);
+    h += '<span onclick="event.stopPropagation();toggleReaction(\''+reactionId+'\',\''+key+'\')" style="display:inline-flex;align-items:center;gap:3px;background:'+(on?'var(--teal-bg,#e6f2ee)':'var(--cream,#f7f5ef)')+';border:1px solid '+(on?'var(--teal)':'var(--line)')+';border-radius:20px;padding:2px 9px;cursor:pointer;">'
+      +'<img src="'+CHEER_IMGS[key]+'" style="width:18px;height:18px;border-radius:4px;object-fit:cover;">'
+      +'<span style="font-size:11px;font-weight:600;color:'+(on?'var(--teal)':'var(--muted)')+';">'+counts[key]+'</span></span>';
+  });
+  h += '</div>';
+  return h;
+}
+
+// 대상 요소에 길게누르기/우클릭/버튼 동작 연결 (HTML에 onmousedown 등으로 호출)
+var _pressTimer=null;
+function reactPressStart(ev, reactionId){
+  clearTimeout(_pressTimer);
+  var el = ev.currentTarget;
+  _pressTimer = setTimeout(function(){ openReactionPicker(reactionId, el); }, 480);
+}
+function reactPressEnd(){ clearTimeout(_pressTimer); }
+function reactBtn(ev, reactionId){ ev.stopPropagation(); openReactionPicker(reactionId, ev.currentTarget); }
+// ===================================================================
 
 // 플래너 작성 중인 학습 항목 목록 [{place, subject, amount}]
 var _plannerItems = [];
@@ -1197,7 +1318,12 @@ function renderPlannerAdmin(){
     html += '<div class="empty">아직 제출한 학생이 없어요.</div>';
   } else {
     submitted.forEach(function(s){
-      html += '<div class="post"><div style="font-weight:700;margin-bottom:6px;">'+esc(s.name)+'</div>'+plannerBody(s.p)+'</div>';
+      var prid='planner_'+s.key+'_'+date;
+      html += '<div class="post"><div style="font-weight:700;margin-bottom:6px;">'+esc(s.name)+'</div>'+plannerBody(s.p);
+      html += '<div class="react-row" oncontextmenu="reactBtn(event,\''+prid+'\');return false;" ontouchstart="reactPressStart(event,\''+prid+'\')" ontouchend="reactPressEnd()" ontouchmove="reactPressEnd()" onmousedown="reactPressStart(event,\''+prid+'\')" onmouseup="reactPressEnd()" onmouseleave="reactPressEnd()" style="margin-top:9px;border-top:1px solid var(--line);padding-top:9px;display:flex;align-items:center;gap:8px;">';
+      html += '<button class="react-add" onclick="reactBtn(event,\''+prid+'\')" title="응원" style="background:none;border:none;cursor:pointer;font-size:15px;color:var(--muted);padding:2px 4px;">🙂﹢</button>';
+      html += renderReactionChips(prid);
+      html += '</div></div>';
     });
   }
   document.getElementById('main').innerHTML += html;
