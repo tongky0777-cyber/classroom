@@ -1017,13 +1017,13 @@ function openReactionPicker(reactionId, anchorEl){
   var mine = (REACTIONS[reactionId]||{})[MY_KEY] || null;
   var bar = document.createElement('div');
   bar.className = 'react-picker';
-  bar.style.cssText = 'position:fixed;z-index:600;display:flex;gap:6px;background:#fff;border:1px solid var(--line);border-radius:24px;padding:7px 11px;box-shadow:0 6px 20px rgba(0,0,0,.18);';
+  bar.style.cssText = 'position:fixed;z-index:600;display:flex;gap:10px;background:#fff;border:1px solid var(--line);border-radius:36px;padding:12px 16px;box-shadow:0 6px 20px rgba(0,0,0,.18);';
   CHEER_LIST.forEach(function(p){
     var key=p[0];
     var on = (mine===key);
     var b = document.createElement('button');
-    b.style.cssText = 'width:40px;height:40px;border-radius:50%;border:'+(on?'2px solid var(--teal)':'none')+';background:'+(on?'var(--teal-bg,#e6f2ee)':'transparent')+';padding:0;cursor:pointer;';
-    b.innerHTML = '<img src="'+CHEER_IMGS[key]+'" style="width:32px;height:32px;border-radius:6px;object-fit:cover;">';
+    b.style.cssText = 'width:64px;height:64px;border-radius:50%;border:'+(on?'2px solid var(--teal)':'none')+';background:'+(on?'var(--teal-bg,#e6f2ee)':'transparent')+';padding:0;cursor:pointer;';
+    b.innerHTML = '<img src="'+CHEER_IMGS[key]+'" style="width:52px;height:52px;border-radius:8px;object-fit:cover;">';
     b.onclick = function(ev){ ev.stopPropagation(); toggleReaction(reactionId, key); closeReactionPicker(); };
     bar.appendChild(b);
   });
@@ -1070,9 +1070,9 @@ function renderReactionChips(reactionId){
   CHEER_LIST.forEach(function(p){
     var key=p[0]; if(!counts[key]) return;
     var on = (mine===key);
-    h += '<span onclick="event.stopPropagation();toggleReaction(\''+reactionId+'\',\''+key+'\')" style="display:inline-flex;align-items:center;gap:3px;background:'+(on?'var(--teal-bg,#e6f2ee)':'var(--cream,#f7f5ef)')+';border:1px solid '+(on?'var(--teal)':'var(--line)')+';border-radius:20px;padding:2px 9px;cursor:pointer;">'
-      +'<img src="'+CHEER_IMGS[key]+'" style="width:18px;height:18px;border-radius:4px;object-fit:cover;">'
-      +'<span style="font-size:11px;font-weight:600;color:'+(on?'var(--teal)':'var(--muted)')+';">'+counts[key]+'</span></span>';
+    h += '<span onclick="event.stopPropagation();toggleReaction(\''+reactionId+'\',\''+key+'\')" style="display:inline-flex;align-items:center;gap:4px;background:'+(on?'var(--teal-bg,#e6f2ee)':'var(--cream,#f7f5ef)')+';border:1px solid '+(on?'var(--teal)':'var(--line)')+';border-radius:24px;padding:3px 11px;cursor:pointer;">'
+      +'<img src="'+CHEER_IMGS[key]+'" style="width:30px;height:30px;border-radius:6px;object-fit:cover;">'
+      +'<span style="font-size:13px;font-weight:600;color:'+(on?'var(--teal)':'var(--muted)')+';">'+counts[key]+'</span></span>';
   });
   h += '</div>';
   return h;
