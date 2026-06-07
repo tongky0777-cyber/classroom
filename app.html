@@ -1571,8 +1571,24 @@ function renderManage(){
   if(memKeys.length===0){ html+='<div style="font-size:13px;color:var(--muted);">아직 추가된 학생이 없어요.</div>'; }
   else {
     memKeys.forEach(function(k){
-      html+='<div class="stu-row"><div class="nm">'+esc(members[k].name||k)+'</div>';
-      html+='<button class="icon-btn" style="padding:5px 11px;" onclick="removeMember(\''+k+'\')">빼기</button></div>';
+      html+='<div class="stu-row" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">'
+        +'<div class="nm" style="flex:1;">'+esc(members[k].name||k)+'</div>'
+        +'<div style="display:flex;gap:6px;flex-shrink:0;">'
+        +'<button class="icon-btn" style="padding:5px 11px;" onclick="openMoveMember(\''+k+'\')">이동</button>'
+        +'<button class="icon-btn" style="padding:5px 11px;color:var(--red);" onclick="removeMember(\''+k+'\')">빼기</button>'
+        +'</div></div>';
+      // 이동 대상 선택 영역(접혀 있다가 '이동' 누르면 펼침)
+      html+='<div id="move-box-'+k+'" style="display:none;background:var(--cream);border-radius:8px;padding:11px 13px;margin:-2px 0 8px;">'
+        +'<div style="font-size:12px;color:var(--muted);margin-bottom:8px;"><b style="color:var(--ink);">'+esc(members[k].name||k)+'</b> 학생을 어느 반으로 옮길까요?</div>'
+        +'<div style="display:flex;flex-wrap:wrap;gap:6px;">';
+      Object.keys(CLASSES).forEach(function(cid){
+        if(cid===CURRENT_CLASS){
+          html+='<span class="mini-btn" style="background:var(--cream2);color:var(--muted);cursor:default;">'+esc(CLASSES[cid].name)+' (현재)</span>';
+        } else {
+          html+='<button class="mini-btn" onclick="moveMember(\''+k+'\',\''+cid+'\')">'+esc(CLASSES[cid].name)+'</button>';
+        }
+      });
+      html+='</div></div>';
     });
   }
   html+='</div>';
@@ -1639,6 +1655,32 @@ function removeMember(key){
     toast('빼냈어요');
     loadAll(function(){ renderManage(); });
   });
+}
+// 이동 대상 선택 영역 펼치기/접기
+function openMoveMember(key){
+  var box=document.getElementById('move-box-'+key);
+  if(!box) return;
+  var showing = box.style.display!=='none';
+  // 다른 열린 이동박스는 모두 닫기 (한 번에 하나만)
+  document.querySelectorAll('[id^="move-box-"]').forEach(function(el){ el.style.display='none'; });
+  box.style.display = showing ? 'none' : 'block';
+}
+// 학생을 다른 반으로 이동: 새 반에 추가 후 현재 반에서 제거
+function moveMember(key, toCid){
+  if(!isFullAdmin){ toast('반 이동은 선생님만 할 수 있어요'); return; }
+  var fromCid=CURRENT_CLASS;
+  if(toCid===fromCid) return;
+  var info=(CLASSES[fromCid] && CLASSES[fromCid].members && CLASSES[fromCid].members[key]) ? CLASSES[fromCid].members[key] : {name:key};
+  var toName=(CLASSES[toCid]&&CLASSES[toCid].name)||'';
+  if(!confirm(esc(info.name||key)+' 학생을 "'+toName+'"(으)로 옮길까요?')) return;
+  // 새 반에 추가
+  db.ref(CP('class_classes/')+toCid+'/members/'+key).set({ name:info.name||key, uid:info.uid||null }).then(function(){
+    // 현재 반에서 제거
+    return db.ref(CP('class_classes/')+fromCid+'/members/'+key).remove();
+  }).then(function(){
+    toast((info.name||key)+' 학생을 '+toName+'으로 옮겼어요');
+    loadAll(function(){ renderManage(); });
+  }).catch(function(){ toast('이동에 실패했어요. 다시 시도해 주세요'); });
 }
 function toggleClassPlannerShare(){
   if(!isFullAdmin){ toast('선생님만 변경할 수 있어요'); return; }
