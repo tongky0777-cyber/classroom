@@ -19,12 +19,14 @@
     --blue:#5b9ae0; --blue-bg:#0f1d2e; --blue-bd:#1c3148;
     --red:#e07a86; --red-bg:#241317; --red-bd:#4a2128;
     --gold:#d2a64a; --gold-bg:#241f12; --gold-bd:#46390f;
-    --ink:#f0f3f7; --muted:#8a96a6; --muted2:#6b7686;
+    --ink:#f0f3f7; --muted:#8a96a6; --muted2:#6b7686; --ink2:#cdd5e0;
     --gold-soft:#241f12; --cream:#13181f; --cream2:#1a212b; --line:#222b38; --deep:#0a0e13;
     --sans:'Pretendard','Apple SD Gothic Neo',sans-serif;
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   body{font-family:var(--sans);background:var(--bg);color:var(--ink);min-height:100vh;padding-bottom:74px;}
+  input,textarea,select{color:var(--ink);background:var(--bg2);}
+  input::placeholder,textarea::placeholder{color:var(--muted2);}
   /* 헤더 */
   .top{position:sticky;top:0;z-index:50;background:var(--bg2);color:var(--ink);padding:15px 18px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--bd);}
   .top .ti{font-size:16px;font-weight:700;letter-spacing:-.3px;}
@@ -924,22 +926,22 @@ function buildAioQ(n, ak, unitKey){
     body='<div style="display:flex;gap:7px;">';
     for(var i=1;i<=5;i++){
       var on=(String(saved.raw)===String(i));
-      body+='<button onclick="pickAioMc('+n+','+i+')" style="flex:1;height:44px;border-radius:8px;border:1.5px solid '+(on?'var(--teal)':'var(--line)')+';background:'+(on?'var(--teal)':'#fff')+';color:'+(on?'#fff':'var(--ink)')+';font-size:17px;font-weight:700;cursor:pointer;">'+sym[i]+'</button>';
+      body+='<button onclick="pickAioMc('+n+','+i+')" style="flex:1;height:44px;border-radius:8px;border:1.5px solid '+(on?'var(--teal)':'var(--bd2)')+';background:'+(on?'var(--teal)':'var(--surface2)')+';color:'+(on?'#fff':'var(--ink)')+';font-size:17px;font-weight:700;cursor:pointer;">'+sym[i]+'</button>';
     }
     body+='</div>';
   } else if(k==='int'){
     var neg=(saved.raw&&String(saved.raw).charAt(0)==='-');
     var absv=saved.raw?String(saved.raw).replace('-',''):'';
     body='<div style="display:flex;gap:8px;align-items:center;">'
-      +'<button id="aio-sign-'+n+'" data-neg="'+(neg?'1':'0')+'" onclick="toggleAioSign('+n+')" style="width:46px;height:44px;border-radius:8px;border:1.5px solid '+(neg?'var(--ink)':'var(--line)')+';background:'+(neg?'var(--ink)':'#fff')+';color:'+(neg?'#fff':'var(--ink)')+';font-size:19px;font-weight:700;cursor:pointer;">±</button>'
-      +'<input id="aio-in-'+n+'" inputmode="numeric" placeholder="정답" value="'+esc(absv)+'" oninput="onAioInt('+n+')" style="flex:1;height:44px;border-radius:8px;border:1.5px solid var(--line);padding:0 14px;font-size:16px;font-family:var(--sans);"></div>';
+      +'<button id="aio-sign-'+n+'" data-neg="'+(neg?'1':'0')+'" onclick="toggleAioSign('+n+')" style="width:46px;height:44px;border-radius:8px;border:1.5px solid '+(neg?'var(--ink)':'var(--bd2)')+';background:'+(neg?'var(--ink)':'var(--surface2)')+';color:'+(neg?'var(--bg)':'var(--ink)')+';font-size:19px;font-weight:700;cursor:pointer;">±</button>'
+      +'<input id="aio-in-'+n+'" inputmode="numeric" placeholder="정답" value="'+esc(absv)+'" oninput="onAioInt('+n+')" style="flex:1;height:44px;border-radius:8px;border:1.5px solid var(--bd2);background:var(--bg2);color:var(--ink);padding:0 14px;font-size:16px;font-family:var(--sans);"></div>';
   } else if(k==='frac'){
     var sv=saved.raw||'', num='', den='';
     if(sv.indexOf('/')>-1){ var pp=sv.split('/'); num=pp[0]; den=pp[1]; } else { num=sv; }
     body='<div style="display:flex;gap:12px;align-items:center;"><div style="width:90px;">'
-      +'<input id="aio-fn-'+n+'" inputmode="numeric" placeholder="분자" value="'+esc(num)+'" oninput="onAioFrac('+n+')" style="width:90px;height:38px;border-radius:8px;border:1.5px solid var(--line);text-align:center;font-size:16px;font-family:var(--sans);">'
+      +'<input id="aio-fn-'+n+'" inputmode="numeric" placeholder="분자" value="'+esc(num)+'" oninput="onAioFrac('+n+')" style="width:90px;height:38px;border-radius:8px;border:1.5px solid var(--bd2);background:var(--bg2);color:var(--ink);text-align:center;font-size:16px;font-family:var(--sans);">'
       +'<div style="height:2px;background:var(--ink);margin:5px 0;"></div>'
-      +'<input id="aio-fd-'+n+'" inputmode="numeric" placeholder="분모" value="'+esc(den)+'" oninput="onAioFrac('+n+')" style="width:90px;height:38px;border-radius:8px;border:1.5px solid var(--line);text-align:center;font-size:16px;font-family:var(--sans);"></div>'
+      +'<input id="aio-fd-'+n+'" inputmode="numeric" placeholder="분모" value="'+esc(den)+'" oninput="onAioFrac('+n+')" style="width:90px;height:38px;border-radius:8px;border:1.5px solid var(--bd2);background:var(--bg2);color:var(--ink);text-align:center;font-size:16px;font-family:var(--sans);"></div>'
       +'<div style="font-size:12px;color:var(--muted);">정수면 분자만,<br>분수면 둘 다</div></div>';
   } else {
     body='<div style="font-size:12px;color:#7a5a16;background:var(--gold-soft);border-radius:8px;padding:9px 12px;font-weight:600;">△ 자동채점이 안 되는 문제예요. 답을 적지 않아도 되고, 수업시간에 선생님과 확인합니다.</div>';
@@ -956,9 +958,9 @@ function toggleAioSign(n){
   var b=document.getElementById('aio-sign-'+n);
   var neg = b.getAttribute('data-neg')==='1' ? false : true;
   b.setAttribute('data-neg', neg?'1':'0');
-  b.style.background = neg?'var(--ink)':'#fff';
-  b.style.color = neg?'#fff':'var(--ink)';
-  b.style.borderColor = neg?'var(--ink)':'var(--line)';
+  b.style.background = neg?'var(--ink)':'var(--surface2)';
+  b.style.color = neg?'var(--bg)':'var(--ink)';
+  b.style.borderColor = neg?'var(--ink)':'var(--bd2)';
   onAioInt(n);
 }
 function onAioInt(n){
@@ -1290,7 +1292,7 @@ function renderCheerButtons(date, targetKey){
   CHEER_LIST.forEach(function(p){
     var key=p[0], label=p[1];
     var on = (myCheer===key);
-    h += '<button onclick="sendCheer(\''+date+'\',\''+targetKey.replace(/'/g,"\\'")+'\',\''+key+'\')" style="display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;border:1.5px solid '+(on?'var(--teal)':'var(--line)')+';background:'+(on?'var(--teal-bg,#e6f2ee)':'#fff')+';cursor:pointer;font-size:12px;">'
+    h += '<button onclick="sendCheer(\''+date+'\',\''+targetKey.replace(/'/g,"\\'")+'\',\''+key+'\')" style="display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;border:1.5px solid '+(on?'var(--teal)':'var(--line)')+';background:'+(on?'var(--teal-bg)':'var(--surface)')+';cursor:pointer;font-size:12px;">'
       +'<img src="'+CHEER_IMGS[key]+'" style="width:22px;height:22px;border-radius:4px;object-fit:cover;">'
       +'<span style="color:var(--ink2);">'+label+'</span>'
       +(counts[key]?'<b style="color:var(--teal);">'+counts[key]+'</b>':'')
@@ -1356,7 +1358,7 @@ function openReactionPicker(reactionId, anchorEl){
     var key=p[0];
     var on = (mine===key);
     var b = document.createElement('button');
-    b.style.cssText = 'width:64px;height:64px;border-radius:50%;border:'+(on?'2px solid var(--teal)':'none')+';background:'+(on?'var(--teal-bg,#e6f2ee)':'transparent')+';padding:0;cursor:pointer;';
+    b.style.cssText = 'width:64px;height:64px;border-radius:50%;border:'+(on?'2px solid var(--teal)':'none')+';background:'+(on?'var(--teal-bg)':'transparent')+';padding:0;cursor:pointer;';
     b.innerHTML = '<img src="'+CHEER_IMGS[key]+'" style="width:52px;height:52px;border-radius:8px;object-fit:cover;">';
     b.onclick = function(ev){ ev.stopPropagation(); toggleReaction(reactionId, key); closeReactionPicker(); };
     bar.appendChild(b);
@@ -1404,7 +1406,7 @@ function renderReactionChips(reactionId){
   CHEER_LIST.forEach(function(p){
     var key=p[0]; if(!counts[key]) return;
     var on = (mine===key);
-    h += '<span onclick="event.stopPropagation();toggleReaction(\''+reactionId+'\',\''+key+'\')" style="display:inline-flex;align-items:center;gap:4px;background:'+(on?'var(--teal-bg,#e6f2ee)':'var(--cream,#f7f5ef)')+';border:1px solid '+(on?'var(--teal)':'var(--line)')+';border-radius:24px;padding:3px 11px;cursor:pointer;">'
+    h += '<span onclick="event.stopPropagation();toggleReaction(\''+reactionId+'\',\''+key+'\')" style="display:inline-flex;align-items:center;gap:4px;background:'+(on?'var(--teal-bg)':'var(--surface2)')+';border:1px solid '+(on?'var(--teal)':'var(--line)')+';border-radius:24px;padding:3px 11px;cursor:pointer;">'
       +'<img src="'+CHEER_IMGS[key]+'" style="width:30px;height:30px;border-radius:6px;object-fit:cover;">'
       +'<span style="font-size:13px;font-weight:600;color:'+(on?'var(--teal)':'var(--muted)')+';">'+counts[key]+'</span></span>';
   });
@@ -1448,7 +1450,7 @@ function plannerForm(existing){
   h += '<button type="button" class="icon-btn" style="width:100%;" onclick="addPlannerItem()">+ 항목 추가</button>';
   h += '</div>';
 
-  h += '<div id="pl-self-achieve" style="display:none;font-size:13px;font-weight:700;color:var(--ink2);background:var(--teal-bg,#e6f2ee);border-radius:8px;padding:9px 12px;margin:0 0 12px;"></div>';
+  h += '<div id="pl-self-achieve" style="display:none;font-size:13px;font-weight:700;color:var(--ink2);background:var(--teal-bg);border-radius:8px;padding:9px 12px;margin:0 0 12px;"></div>';
 
   h += '<label style="font-size:12px;font-weight:700;color:var(--ink2);">한 줄 소감 / 내일 계획</label>';
   h += '<textarea id="pl-note" class="fld" placeholder="오늘 공부는 어땠나요? 내일은 뭘 할까요?" style="margin:4px 0 10px;min-height:70px;">'+esc(e.note||'')+'</textarea>';
@@ -1519,7 +1521,7 @@ function renderPlannerItems(){
     // 자습 항목엔 체크박스, 학원은 없음
     var chk = '';
     if(it.place==='자습'){
-      chk = '<button onclick="togglePlannerItemDone('+i+')" style="flex-shrink:0;width:22px;height:22px;border-radius:6px;border:1.5px solid '+(it.done?'var(--teal)':'var(--line)')+';background:'+(it.done?'var(--teal)':'#fff')+';color:#fff;cursor:pointer;font-size:13px;line-height:1;">'+(it.done?'✓':'')+'</button>';
+      chk = '<button onclick="togglePlannerItemDone('+i+')" style="flex-shrink:0;width:22px;height:22px;border-radius:6px;border:1.5px solid '+(it.done?'var(--teal)':'var(--line)')+';background:'+(it.done?'var(--teal)':'var(--surface2)')+';color:'+(it.done?'#fff':'var(--muted2)')+';cursor:pointer;font-size:13px;line-height:1;">'+(it.done?'✓':'')+'</button>';
     }
     var txtStyle = (it.place==='자습'&&it.done)?'text-decoration:line-through;color:var(--muted);':'';
     return '<div style="display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:6px;">'
