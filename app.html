@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="./grader.js"></script>
 <style>
   :root{
     --deep:#0f2a24; --teal:#1f6f5c; --teal2:#2a8a72;
@@ -597,12 +598,25 @@ var HW_STUDENTS = [];  // 대시보드 학생 (bjm_students) — classKey 매칭
 var HW_DONE = {};      // 완료 체크 (class_hw_done) {hwId:{classKey:{done,at}}}
 
 function loadHomework(cb){
-  var done=0; function step(){ done++; if(done>=3 && cb) cb(); }
+  var done=0; function step(){ done++; if(done>=3 && cb) loadMyWrongSubs(cb); }
   try{
     db.ref('bjm_homework').once('value').then(function(s){ var v=s.val(); HW_LIST = v? (Array.isArray(v)?v:Object.values(v)) : []; step(); }).catch(step);
     db.ref('bjm_students').once('value').then(function(s){ var v=s.val(); HW_STUDENTS = v? (Array.isArray(v)?v:Object.values(v)) : []; step(); }).catch(step);
     db.ref(CP('class_hw_done')).once('value').then(function(s){ HW_DONE = s.val()||{}; step(); }).catch(step);
   }catch(e){ if(cb) cb(); }
+}
+
+// 올인원 자동채점 숙제에 대한 내 제출 기록 로드 (mySid 기준)
+function loadMyWrongSubs(cb){
+  var sid=mySid();
+  var aioHw=HW_LIST.filter(function(h){ return _isAioHw(h) && hwForSid(h, sid); });
+  if(!sid || !aioHw.length){ if(cb) cb(); return; }
+  var left=aioHw.length;
+  aioHw.forEach(function(h){
+    db.ref('wronganswers/'+h.id+'/'+sid).once('value').then(function(s){
+      WRONG_SUBS[h.id]=s.val()||null; if(--left<=0 && cb) cb();
+    }).catch(function(){ if(--left<=0 && cb) cb(); });
+  });
 }
 
 // 내 classKey에 연결된 대시보드 학생 id 찾기
@@ -636,6 +650,13 @@ function isHwCheckedByStudent(hwId, key){
   return !!(HW_DONE[hwId] && HW_DONE[hwId][key] && HW_DONE[hwId][key].done);
 }
 
+// ===== [오답수집] 올인원 자동채점 숙제 통합 =====
+var AIO_BOOK_NAME='All in one';
+var AIO_UNIT_NAMES={ unit1:'1단원 다항식', unit2:'2단원 나머지정리·인수분해', unit3:'3단원 방정식' };
+var _aioAK=null;          // 정답표 캐시
+var WRONG_SUBS={};        // {hwId: submission}  내 제출 캐시
+function _isAioHw(h){ return h && h.book===AIO_BOOK_NAME && h.unitKey && h.qStart!=null && h.qEnd!=null; }
+
 // 학생: 내 숙제 목록
 function renderHwStudent(){
   var main=document.getElementById('main');
@@ -663,6 +684,29 @@ function renderHwStudent(){
     var info = [h.book, h.unit].filter(Boolean).join(' · ');
     var range = h.range||'';
     var overdue = h.due && h.due<today && !done;
+
+    // ── 올인원 자동채점 숙제: 별도 카드 ──
+    if(_isAioHw(h)){
+      var sub=WRONG_SUBS[h.id];
+      var uname=AIO_UNIT_NAMES[h.unitKey]||h.unitKey;
+      var title='All in one '+uname+' '+h.qStart+'~'+h.qEnd+'번';
+      if(sub && sub.submittedFull){
+        var c=sub.counts||{};
+        html += '<div style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;opacity:.75;">'
+          +'<div style="font-size:13.5px;font-weight:700;">📊 '+esc(title)+'</div>'
+          +'<div style="font-size:12px;color:var(--teal);margin-top:5px;">제출 완료 · 맞음 '+(c.correct!=null?c.correct:'-')+' / 틀림 '+(c.wrong!=null?c.wrong:'-')+(c.pending?' / △'+c.pending:'')+'</div>'
+          +'<div style="font-size:11px;color:var(--muted);margin-top:3px;">'+(sub.submittedAt||'')+' 제출 · 수정은 선생님께</div>'
+          +'</div>';
+      } else {
+        html += '<div style="background:#fff;border:1.5px solid '+(overdue?'var(--red)':'var(--gold)')+';border-radius:14px;padding:14px;margin-bottom:10px;">'
+          +'<div style="font-size:13.5px;font-weight:700;">📝 '+esc(title)+'</div>'
+          +(h.due?'<div style="font-size:12px;color:'+(overdue?'var(--red)':'var(--muted)')+';margin-top:3px;font-weight:600;">'+h.due+'까지</div>':'')
+          +'<button class="send-btn" style="margin-top:10px;width:100%;" onclick="openAioSolve(\''+h.id+'\')">답 입력하고 채점받기</button>'
+          +'</div>';
+      }
+      return; // 기존 완료체크 카드 렌더 건너뜀
+    }
+
     if(done){
       var doneLabel, btn;
       if(byStudent){
@@ -695,6 +739,168 @@ function renderHwStudent(){
     }
   });
   main.innerHTML += html;
+}
+
+// ===== 올인원 자동채점 풀이 화면 (앱 내) =====
+var _aioCtx=null;  // { hw, sid, inputs }
+function openAioSolve(hwId){
+  var sid=mySid();
+  var hw=HW_LIST.find(function(x){ return x.id===hwId; });
+  if(!hw || !_isAioHw(hw) || !sid){ toast('숙제 정보를 찾을 수 없어요'); return; }
+  var prev=WRONG_SUBS[hwId];
+  if(prev && prev.submittedFull){ toast('이미 제출한 숙제예요'); return; }
+  var main=document.getElementById('main');
+  main.innerHTML='<div class="empty">정답표를 불러오는 중…</div>';
+  var p = _aioAK ? Promise.resolve(_aioAK) : Grader.loadAnswerKey('올인원').then(function(ak){ _aioAK=ak; return ak; });
+  p.then(function(ak){
+    _aioCtx={ hw:hw, sid:sid, inputs:(prev&&prev.inputs)||{} };
+    renderAioSolve();
+  }).catch(function(){ main.innerHTML='<div class="empty">정답표를 불러오지 못했어요.<br>잠시 후 다시 시도해 주세요.</div>'; });
+}
+
+function renderAioSolve(){
+  var ctx=_aioCtx; if(!ctx) return;
+  var hw=ctx.hw;
+  var uname=AIO_UNIT_NAMES[hw.unitKey]||hw.unitKey;
+  var main=document.getElementById('main');
+  var html='<div style="margin-bottom:12px;">'
+    +'<button class="icon-btn" style="padding:6px 12px;font-size:13px;" onclick="setTab(\'hw\')">← 숙제 목록</button></div>'
+    +'<div style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;">'
+    +'<div style="font-size:12px;font-weight:700;color:var(--teal);">📝 All in one</div>'
+    +'<div style="font-size:16px;font-weight:800;margin-top:3px;">'+esc(uname)+'</div>'
+    +'<div style="font-size:12px;color:var(--muted);margin-top:3px;">'+hw.qStart+'번 ~ '+hw.qEnd+'번</div></div>'
+    +'<div style="background:var(--gold-soft);border-radius:10px;padding:10px 13px;font-size:12px;color:#7a5a16;margin-bottom:12px;font-weight:600;line-height:1.6;">'
+    +'객관식은 번호를, 단답·분수는 답을 입력하세요. 채점 결과는 제출 후에 보여요.<br>△ 표시 문제는 자동채점이 안 돼서 수업시간에 선생님과 확인합니다.</div>'
+    +'<div id="aio-qlist"></div>';
+  main.innerHTML=html;
+  var qlist=document.getElementById('aio-qlist');
+  for(var n=hw.qStart;n<=hw.qEnd;n++){ qlist.appendChild(buildAioQ(n, _aioAK, hw.unitKey)); }
+  var bar=document.createElement('div');
+  bar.style.cssText='position:sticky;bottom:0;background:var(--cream);padding:12px 0;margin-top:6px;';
+  bar.innerHTML='<button class="send-btn" id="aio-submit" style="width:100%;padding:14px;font-size:15px;" onclick="submitAio()">제출하기</button>'
+    +'<div id="aio-prog" style="text-align:center;font-size:12px;color:var(--muted);margin-top:6px;"></div>';
+  main.appendChild(bar);
+  updateAioProg();
+}
+
+function buildAioQ(n, ak, unitKey){
+  var meta=Grader.getAnswer(ak, unitKey, n);
+  var k=meta?meta.k:'self';
+  var saved=_aioCtx.inputs[n]||{};
+  var TAG={ mc:'객관식', int:'단답', frac:'분수', self:'직접확인' };
+  var div=document.createElement('div');
+  div.style.cssText='background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 13px;margin-bottom:9px;';
+  var head='<div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;"><b style="font-size:15px;">'+n+'번</b>'
+    +'<span style="font-size:10px;font-weight:700;background:var(--cream2);color:var(--muted);padding:2px 7px;border-radius:7px;">'+(TAG[k]||'')+'</span></div>';
+  var body='';
+  if(k==='mc'){
+    var sym=['','①','②','③','④','⑤'];
+    body='<div style="display:flex;gap:7px;">';
+    for(var i=1;i<=5;i++){
+      var on=(String(saved.raw)===String(i));
+      body+='<button onclick="pickAioMc('+n+','+i+')" style="flex:1;height:44px;border-radius:8px;border:1.5px solid '+(on?'var(--teal)':'var(--line)')+';background:'+(on?'var(--teal)':'#fff')+';color:'+(on?'#fff':'var(--ink)')+';font-size:17px;font-weight:700;cursor:pointer;">'+sym[i]+'</button>';
+    }
+    body+='</div>';
+  } else if(k==='int'){
+    var neg=(saved.raw&&String(saved.raw).charAt(0)==='-');
+    var absv=saved.raw?String(saved.raw).replace('-',''):'';
+    body='<div style="display:flex;gap:8px;align-items:center;">'
+      +'<button id="aio-sign-'+n+'" data-neg="'+(neg?'1':'0')+'" onclick="toggleAioSign('+n+')" style="width:46px;height:44px;border-radius:8px;border:1.5px solid '+(neg?'var(--ink)':'var(--line)')+';background:'+(neg?'var(--ink)':'#fff')+';color:'+(neg?'#fff':'var(--ink)')+';font-size:19px;font-weight:700;cursor:pointer;">±</button>'
+      +'<input id="aio-in-'+n+'" inputmode="numeric" placeholder="정답" value="'+esc(absv)+'" oninput="onAioInt('+n+')" style="flex:1;height:44px;border-radius:8px;border:1.5px solid var(--line);padding:0 14px;font-size:16px;font-family:var(--sans);"></div>';
+  } else if(k==='frac'){
+    var sv=saved.raw||'', num='', den='';
+    if(sv.indexOf('/')>-1){ var pp=sv.split('/'); num=pp[0]; den=pp[1]; } else { num=sv; }
+    body='<div style="display:flex;gap:12px;align-items:center;"><div style="width:90px;">'
+      +'<input id="aio-fn-'+n+'" inputmode="numeric" placeholder="분자" value="'+esc(num)+'" oninput="onAioFrac('+n+')" style="width:90px;height:38px;border-radius:8px;border:1.5px solid var(--line);text-align:center;font-size:16px;font-family:var(--sans);">'
+      +'<div style="height:2px;background:var(--ink);margin:5px 0;"></div>'
+      +'<input id="aio-fd-'+n+'" inputmode="numeric" placeholder="분모" value="'+esc(den)+'" oninput="onAioFrac('+n+')" style="width:90px;height:38px;border-radius:8px;border:1.5px solid var(--line);text-align:center;font-size:16px;font-family:var(--sans);"></div>'
+      +'<div style="font-size:12px;color:var(--muted);">정수면 분자만,<br>분수면 둘 다</div></div>';
+  } else {
+    body='<div style="font-size:12px;color:#7a5a16;background:var(--gold-soft);border-radius:8px;padding:9px 12px;font-weight:600;">△ 자동채점이 안 되는 문제예요. 답을 적지 않아도 되고, 수업시간에 선생님과 확인합니다.</div>';
+  }
+  div.innerHTML=head+body;
+  return div;
+}
+
+function pickAioMc(n,i){
+  _aioCtx.inputs[n]=Object.assign({},_aioCtx.inputs[n],{raw:String(i)});
+  renderAioSolve();
+}
+function toggleAioSign(n){
+  var b=document.getElementById('aio-sign-'+n);
+  var neg = b.getAttribute('data-neg')==='1' ? false : true;
+  b.setAttribute('data-neg', neg?'1':'0');
+  b.style.background = neg?'var(--ink)':'#fff';
+  b.style.color = neg?'#fff':'var(--ink)';
+  b.style.borderColor = neg?'var(--ink)':'var(--line)';
+  onAioInt(n);
+}
+function onAioInt(n){
+  var b=document.getElementById('aio-sign-'+n);
+  var neg = b.getAttribute('data-neg')==='1';
+  var v=(document.getElementById('aio-in-'+n).value||'').replace(/[^0-9]/g,'');
+  _aioCtx.inputs[n]=Object.assign({},_aioCtx.inputs[n],{raw:(v===''?'':(neg?'-':'')+v)});
+  updateAioProg();
+}
+function onAioFrac(n){
+  var num=(document.getElementById('aio-fn-'+n).value||'').trim();
+  var den=(document.getElementById('aio-fd-'+n).value||'').trim();
+  _aioCtx.inputs[n]=Object.assign({},_aioCtx.inputs[n],{raw:(den===''?num:num+'/'+den)});
+  updateAioProg();
+}
+function updateAioProg(){
+  var ctx=_aioCtx; if(!ctx) return;
+  var hw=ctx.hw, answered=0, gradable=0, selfCnt=0;
+  for(var n=hw.qStart;n<=hw.qEnd;n++){
+    var meta=Grader.getAnswer(_aioAK, hw.unitKey, n);
+    if(meta && meta.k==='self'){ selfCnt++; continue; }
+    gradable++;
+    var raw=(ctx.inputs[n]||{}).raw;
+    if(raw!=null && String(raw).trim()!=='') answered++;
+  }
+  var el=document.getElementById('aio-prog');
+  if(el) el.innerHTML='입력 '+answered+' / '+gradable+'문제'+(selfCnt?' (직접확인 '+selfCnt+')':'');
+}
+
+var _aioSubmitting=false;
+function submitAio(){
+  if(_aioSubmitting) return;
+  var ctx=_aioCtx; if(!ctx) return;
+  var hw=ctx.hw;
+  var r=Grader.gradeHomework(_aioAK, hw.unitKey, hw.qStart, hw.qEnd, ctx.inputs);
+  if(r.blank.length>0 && !confirm('아직 답하지 않은 문제가 '+r.blank.length+'개 있어요. 그래도 제출할까요?')) return;
+  _aioSubmitting=true;
+  var btn=document.getElementById('aio-submit'); if(btn){ btn.disabled=true; btn.textContent='제출 중…'; }
+  var payload={ inputs:ctx.inputs, wrong:r.wrong, correct:r.correct, pending:r.pending, counts:r.counts,
+    done:true, submittedAt:todayStr(), submittedFull:new Date().toISOString() };
+  db.ref('wronganswers/'+hw.id+'/'+ctx.sid).set(payload).then(function(){
+    WRONG_SUBS[hw.id]=payload;
+    syncHwStatusToDashboard(hw.id, 'done');
+    db.ref(CP('class_hw_done/')+hw.id+'/'+MY_KEY).set({ done:true, at:new Date().toISOString(), name:MY_NAME });
+    if(!HW_DONE[hw.id]) HW_DONE[hw.id]={};
+    HW_DONE[hw.id][MY_KEY]={done:true};
+    try{ notifyTelegram('📊 숙제 제출\n'+MY_NAME+' 학생 · '+(AIO_UNIT_NAMES[hw.unitKey]||'')+' '+hw.qStart+'~'+hw.qEnd+'번\n맞음 '+r.counts.correct+' / 틀림 '+r.counts.wrong); }catch(e){}
+    showAioResult(r);
+  }).catch(function(){
+    _aioSubmitting=false;
+    if(btn){ btn.disabled=false; btn.textContent='제출하기'; }
+    toast('제출 실패. 다시 시도해 주세요');
+  });
+}
+
+function showAioResult(r){
+  var c=r.counts;
+  var main=document.getElementById('main');
+  main.innerHTML='<div style="text-align:center;padding:30px 16px;">'
+    +'<div style="font-size:42px;">✅</div>'
+    +'<div style="font-size:18px;font-weight:800;margin:8px 0 16px;">제출 완료!</div>'
+    +'<div style="background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px;text-align:left;max-width:320px;margin:0 auto;">'
+    +'<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);"><span>전체 문제</span><b>'+c.total+'개</b></div>'
+    +'<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);"><span>맞은 문제</span><b style="color:var(--teal)">'+c.correct+'개</b></div>'
+    +'<div style="display:flex;justify-content:space-between;padding:7px 0;'+(c.pending?'border-bottom:1px solid var(--line);':'')+'"><span>틀린 문제</span><b style="color:var(--red)">'+c.wrong+'개</b></div>'
+    +(c.pending?'<div style="display:flex;justify-content:space-between;padding:7px 0;"><span>직접확인(△)</span><b>'+c.pending+'개</b></div>':'')
+    +'</div>'
+    +'<button class="send-btn" style="margin-top:18px;padding:12px 28px;" onclick="setTab(\'hw\')">숙제 목록으로</button></div>';
 }
 
 function toggleHwDone(hwId, done){
