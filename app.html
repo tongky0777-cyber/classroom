@@ -35,15 +35,16 @@
   /* 반 선택 바 */
   .classbar{background:var(--bg2);border-bottom:1px solid var(--bd);padding:10px 14px;display:flex;gap:8px;overflow-x:auto;align-items:center;}
   .classbar::-webkit-scrollbar{display:none;}
-  .class-chip{flex-shrink:0;background:var(--surface);border:1px solid var(--bd);border-radius:30px;padding:8px 16px;font-size:13px;font-weight:500;color:var(--muted);cursor:pointer;transition:.2s;white-space:nowrap;}
+  .class-chip{flex-shrink:0;background:var(--surface);border:1px solid var(--bd2);border-radius:30px;padding:8px 16px;font-size:13px;font-weight:500;color:var(--ink);cursor:pointer;transition:.2s;white-space:nowrap;}
   .class-chip.on{background:var(--teal);color:#fff;border-color:var(--teal);}
   .wrap{max-width:680px;margin:0 auto;padding:16px 14px;}
   /* 하단 탭바 */
   .tabbar{position:fixed;left:0;right:0;bottom:0;z-index:60;display:flex;background:var(--bg2);border-top:1px solid var(--bd);}
-  .tabbar .tb{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 0 11px;cursor:pointer;color:var(--muted2);}
+  .tabbar .tb{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:9px 0 11px;cursor:pointer;color:var(--muted2);transition:.15s;}
   .tabbar .tb .tbi{font-size:21px;line-height:1;}
   .tabbar .tb .tbl{font-size:10px;font-weight:500;}
   .tabbar .tb.on{color:var(--blue);}
+  .tabbar .tb.on .tbi{transform:translateY(-1px);}
   /* 기존 .vtabs/.vtab 은 안 쓰지만 호환용으로 숨김 */
   .vtabs{display:none;}
   /* 카드 공통 */
@@ -359,15 +360,15 @@ function renderClassBar(){
   var list=myClasses();
   var html='';
   if(isAdmin && CURRENT_CLASS){
-    html+='<div class="class-chip" onclick="backToClassPicker()" style="background:var(--cream);color:var(--teal);">‹ 반 목록</div>';
+    html+='<div class="class-chip" onclick="backToClassPicker()" style="background:var(--surface2);color:var(--teal-l);border-color:var(--teal-bd);">‹ 반 목록</div>';
   }
   list.forEach(function(c){
     html+='<div class="class-chip'+(CURRENT_CLASS===c.id?' on':'')+'" onclick="selectClass(\''+c.id+'\')">'+esc(c.name)+'</div>';
   });
   if(isAdmin){
-    html+='<div class="class-chip" onclick="openNewClass()" style="background:var(--gold-soft);color:var(--gold);">+ 반 만들기</div>';
+    html+='<div class="class-chip" onclick="openNewClass()" style="background:var(--gold-bg);color:var(--gold);border-color:var(--gold-bd);">+ 반 만들기</div>';
   } else {
-    html+='<div class="class-chip" onclick="showClassJoin()" style="background:var(--gold-soft);color:var(--gold);">+ 반 신청</div>';
+    html+='<div class="class-chip" onclick="showClassJoin()" style="background:var(--gold-bg);color:var(--gold);border-color:var(--gold-bd);">+ 반 신청</div>';
   }
   bar.innerHTML=html;
 }
@@ -462,20 +463,30 @@ function loadPosts(){
 }
 
 // 관리자: 반 선택 화면 (반 카드 목록)
+var _classColors=[
+  {bar:'#5b9ae0', bg:'#0f1d2e', ic:'ti-users'},
+  {bar:'#4fb286', bg:'#10241b', ic:'ti-users'},
+  {bar:'#d2a64a', bg:'#241f12', ic:'ti-users'},
+  {bar:'#b98ce0', bg:'#1d1630', ic:'ti-users'},
+  {bar:'#e07a86', bg:'#241317', ic:'ti-users'},
+  {bar:'#5bc6d0', bg:'#0d2528', ic:'ti-users'}
+];
 function renderAdminClassPicker(){
   var list = myClasses();
-  var html = '<div style="font-size:15px;font-weight:700;margin:4px 2px 14px;">반을 선택하세요</div>';
+  var html = '<div style="font-size:15px;font-weight:500;margin:4px 2px 16px;color:var(--ink);">반을 선택하세요</div>';
   if(!list.length){
     html += '<div class="empty">아직 만든 반이 없어요.<br>위 <b>+ 반 만들기</b>를 누르세요.</div>';
     document.getElementById('main').innerHTML = html;
     return;
   }
-  list.forEach(function(c){
+  list.forEach(function(c, i){
     var memberCnt = c.members ? Object.keys(c.members).length : 0;
-    html += '<div onclick="selectClass(\''+c.id+'\')" style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:10px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;">'
-      +'<div><div style="font-size:16px;font-weight:700;color:var(--deep);">'+esc(c.name)+'</div>'
-      +'<div style="font-size:12px;color:var(--muted);margin-top:4px;">학생 '+memberCnt+'명</div></div>'
-      +'<span style="color:var(--teal);font-size:20px;">›</span>'
+    var col=_classColors[i % _classColors.length];
+    html += '<div onclick="selectClass(\''+c.id+'\')" style="background:var(--surface);border:1px solid var(--bd);border-left:4px solid '+col.bar+';border-radius:0 14px 14px 0;padding:16px 18px;margin-bottom:11px;cursor:pointer;display:flex;align-items:center;gap:14px;">'
+      +'<div style="width:42px;height:42px;border-radius:11px;background:'+col.bg+';display:flex;align-items:center;justify-content:center;flex-shrink:0;"><i class="ti '+col.ic+'" style="font-size:22px;color:'+col.bar+';"></i></div>'
+      +'<div style="flex:1;min-width:0;"><div style="font-size:16px;font-weight:500;color:var(--ink);">'+esc(c.name)+'</div>'
+      +'<div style="font-size:12px;color:var(--muted);margin-top:3px;">학생 '+memberCnt+'명</div></div>'
+      +'<i class="ti ti-chevron-right" style="color:'+col.bar+';font-size:20px;"></i>'
       +'</div>';
   });
   document.getElementById('main').innerHTML = html;
