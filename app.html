@@ -712,7 +712,12 @@ function renderHome(){
   var pct = total? Math.round(doneCnt/total*100):0;
   var waiting = mine.filter(function(h){ return !isHwDone(h.id, MY_KEY); });
   var today=todayStr();
+  var tomorrow=new Date(Date.now()+86400000).toISOString().slice(0,10);
   var overdue = waiting.filter(function(h){ return h.due && h.due<today; }).length;
+  var soon = waiting.filter(function(h){ return h.due && (h.due===today || h.due===tomorrow); }).length; // 오늘·내일 마감
+  var waitCap = overdue ? ('마감 초과 '+overdue+'개')
+              : soon ? ('오늘·내일 마감 '+soon+'개')
+              : (waiting.length ? '여유 있어요' : '없어요');
 
   // 최근 자동채점 결과 (가장 최근 제출된 올인원 숙제)
   var recentSub=null, recentHw=null;
@@ -737,7 +742,7 @@ function renderHome(){
     +'<div class="sub">오늘도 화이팅이에요 👋</div></div>'
     +'<div class="stat-grid">'
     +'<div class="stat-card blue"><div class="lbl"><i class="ti ti-target"></i> 숙제 완료율</div><div class="num">'+pct+'%</div><div class="cap">'+doneCnt+' / '+total+'개 완료</div></div>'
-    +'<div class="stat-card red"><div class="lbl"><i class="ti ti-clock"></i> 대기 숙제</div><div class="num">'+waiting.length+'개</div><div class="cap">'+(overdue?('마감 초과 '+overdue+'개'):'마감 임박 확인')+'</div></div>'
+    +'<div class="stat-card red"><div class="lbl"><i class="ti ti-clock"></i> 대기 숙제</div><div class="num">'+waiting.length+'개</div><div class="cap">'+waitCap+'</div></div>'
     +'<div class="stat-card teal"><div class="lbl"><i class="ti ti-chart-bar"></i> 최근 채점</div><div class="num">'+scoreTxt+'</div><div class="cap">'+esc(scoreCap)+'</div></div>'
     +'<div class="stat-card gold"><div class="lbl"><i class="ti ti-flame"></i> 받은 숙제</div><div class="num">'+total+'개</div><div class="cap">숙제 탭에서 확인</div></div>'
     +'</div>';
