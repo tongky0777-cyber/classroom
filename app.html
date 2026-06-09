@@ -710,10 +710,18 @@ function isHwCheckedByStudent(hwId, key){
 
 // ===== [오답수집] 올인원 자동채점 숙제 통합 =====
 var AIO_BOOK_NAME='All in one';
-var AIO_UNIT_NAMES={ unit1:'1단원 다항식', unit2:'2단원 나머지정리·인수분해', unit3:'3단원 방정식' };
-var _aioAK=null;          // 정답표 캐시
+var AIO_BOOKS={
+  'All in one':{ tmKey:'올인원', units:{ unit1:'1단원 다항식', unit2:'2단원 나머지정리·인수분해', unit3:'3단원 방정식' } },
+  'All in one 대수':{ tmKey:'올인원 대수', units:{ unit1_1:'1-1 지수 & 로그', unit1_2:'1-2 지수로그함수', unit2_1:'2-1 삼각함수' } }
+};
+// 전 교재 단원명 통합 (레코드 표시용)
+var AIO_UNIT_NAMES=(function(){ var m={}; for(var b in AIO_BOOKS){ var u=AIO_BOOKS[b].units; for(var k in u) m[k]=u[k]; } return m; })();
+function _aioBookOf(h){ return (h && AIO_BOOKS[h.book]) ? h.book : 'All in one'; }
+function _aioTmKeyOf(h){ return AIO_BOOKS[_aioBookOf(h)].tmKey; }
+var _aioAK=null;          // 현재 풀이 중인 교재 정답표 (활성)
+var _aioAKCache={};       // tmKey → 정답표 캐시
 var WRONG_SUBS={};        // {hwId: submission}  내 제출 캐시
-function _isAioHw(h){ return h && h.book===AIO_BOOK_NAME && h.unitKey && h.qStart!=null && h.qEnd!=null; }
+function _isAioHw(h){ return h && AIO_BOOKS[h.book] && h.unitKey && h.qStart!=null && h.qEnd!=null; }
 
 // ===== 학생 홈 대시보드 =====
 function renderHome(){
@@ -879,8 +887,10 @@ function openAioSolve(hwId){
   if(prev && prev.submittedFull){ toast('이미 제출한 숙제예요'); return; }
   var main=document.getElementById('main');
   main.innerHTML='<div class="empty">정답표를 불러오는 중…</div>';
-  var p = _aioAK ? Promise.resolve(_aioAK) : Grader.loadAnswerKey('올인원').then(function(ak){ _aioAK=ak; return ak; });
+  var tmKey=_aioTmKeyOf(hw);
+  var p = _aioAKCache[tmKey] ? Promise.resolve(_aioAKCache[tmKey]) : Grader.loadAnswerKey(tmKey).then(function(ak){ _aioAKCache[tmKey]=ak; return ak; });
   p.then(function(ak){
+    _aioAK=ak;
     _aioCtx={ hw:hw, sid:sid, inputs:(prev&&prev.inputs)||{} };
     renderAioSolve();
   }).catch(function(){ main.innerHTML='<div class="empty">정답표를 불러오지 못했어요.<br>잠시 후 다시 시도해 주세요.</div>'; });
@@ -894,7 +904,7 @@ function renderAioSolve(){
   var html='<div style="margin-bottom:12px;">'
     +'<button class="icon-btn" style="padding:6px 12px;font-size:13px;" onclick="setTab(\'hw\')">← 숙제 목록</button></div>'
     +'<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;">'
-    +'<div style="font-size:12px;font-weight:700;color:var(--teal);">📝 All in one</div>'
+    +'<div style="font-size:12px;font-weight:700;color:var(--teal);">📝 '+esc(_aioBookOf(hw))+'</div>'
     +'<div style="font-size:16px;font-weight:800;margin-top:3px;">'+esc(uname)+'</div>'
     +'<div style="font-size:12px;color:var(--muted);margin-top:3px;">'+hw.qStart+'번 ~ '+hw.qEnd+'번</div></div>'
     +'<div style="background:var(--gold-soft);border-radius:10px;padding:10px 13px;font-size:12px;color:#7a5a16;margin-bottom:12px;font-weight:600;line-height:1.6;">'
