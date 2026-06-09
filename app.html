@@ -654,15 +654,40 @@ function setTab(t){ CUR_TAB=t; uploadImgs=[]; uploadFile=null; plannerImgs=[]; i
 var HW_LIST = [];      // 대시보드 숙제 (bjm_homework)
 var HW_STUDENTS = [];  // 대시보드 학생 (bjm_students) — classKey 매칭용
 var HW_DONE = {};      // 완료 체크 (class_hw_done) {hwId:{classKey:{done,at}}}
+var TEST_LIST = [];    // 대시보드 시험 점수 (bjm_tests) — 선생님이 입력한 테스트 결과
 
 function loadHomework(cb){
-  var done=0; function step(){ done++; if(done>=3 && cb) loadMyWrongSubs(cb); }
+  var done=0; function step(){ done++; if(done>=4 && cb) loadMyWrongSubs(cb); }
   try{
     db.ref('bjm_homework').once('value').then(function(s){ var v=s.val(); HW_LIST = v? (Array.isArray(v)?v:Object.values(v)) : []; step(); }).catch(step);
     db.ref('bjm_students').once('value').then(function(s){ var v=s.val(); HW_STUDENTS = v? (Array.isArray(v)?v:Object.values(v)) : []; step(); }).catch(step);
     db.ref(CP('class_hw_done')).once('value').then(function(s){ HW_DONE = s.val()||{}; step(); }).catch(step);
+    db.ref('bjm_tests').once('value').then(function(s){ var v=s.val(); TEST_LIST = v? (Array.isArray(v)?v:Object.values(v)) : []; step(); }).catch(step);
   }catch(e){ if(cb) cb(); }
 }
+
+// 시험 레코드 → 표시 라벨 (대시보드 getPaperKey 규칙과 동일)
+function testLabel(t){
+  var name=t.name||'';
+  if(name==='미니모의고사'){ return [t.miniTarget, '미니모의고사', t.week].filter(Boolean).join(' '); }
+  if(name==='기출 Test'){ return [t.examYear,t.examSchool,t.examSubject,t.examTerm2,(t.examTerm?t.examTerm+'고사':'')].filter(Boolean).join(' ')||'기출 Test'; }
+  if(name==='모의고사 기출'){ return [t.examYear,t.mockRound].filter(Boolean).join(' ')+' 모의고사 기출'; }
+  return name+(t.unit?' · '+t.unit:'');
+}
+// 내 시험 점수 (채점 완료된 것만, 최근순)
+function myTestScores(){
+  var sid=mySid();
+  if(!sid) return [];
+  return TEST_LIST.filter(function(t){
+    return t && t.sid===sid && !t.pending && t.score!=null;
+  }).sort(function(a,b){
+    return (b.date||'').localeCompare(a.date||'') || (b.id||'').localeCompare(a.id||'');
+  });
+}
+// 점수대별 색상 (대시보드 난이도 기준: 초록90↑/노랑70↑/빨강70↓)
+function scoreColor(pct){ return pct>=90?'#4fb286':pct>=70?'#d2a64a':'#e07a86'; }
+function scoreBarColor(pct){ return pct>=90?'#1f6f5c':pct>=70?'#d2a64a':'#e07a86'; }
+function scoreBg(pct){ return pct>=90?'#0d2118':pct>=70?'#1c1505':'#1f0e10'; }
 
 // 올인원 자동채점 숙제에 대한 내 제출 기록 로드 (mySid 기준)
 function loadMyWrongSubs(cb){
@@ -740,17 +765,14 @@ function renderHome(){
               : soon ? ('오늘·내일 마감 '+soon+'개')
               : (waiting.length ? '여유 있어요' : '없어요');
 
-  // 최근 자동채점 결과 (가장 최근 제출된 올인원 숙제)
-  var recentSub=null, recentHw=null;
-  Object.keys(WRONG_SUBS).forEach(function(hwId){
-    var s=WRONG_SUBS[hwId]; if(!s||!s.submittedFull) return;
-    if(!recentSub || (s.submittedFull>recentSub.submittedFull)){ recentSub=s; recentHw=HW_LIST.find(function(x){return x.id===hwId;}); }
-  });
-  var scoreTxt='-', scoreCap='제출 기록 없음';
-  if(recentSub && recentSub.counts && recentSub.counts.total){
-    scoreTxt = Math.round(recentSub.counts.correct/recentSub.counts.total*100)+'점';
-    var un=recentHw?(AIO_UNIT_NAMES[recentHw.unitKey]||''):'';
-    scoreCap = un+(recentHw?(' '+recentHw.qStart+'~'+recentHw.qEnd+'번'):'');
+  // 최근 시험 점수 (선생님이 대시보드에서 입력한 채점 완료 시험)
+  var myTests = myTestScores();
+  var recentTest = myTests[0] || null;
+  var scoreTxt='-', scoreCap='시험 기록 없음', scoreNumColor='#f0f3f7';
+  if(recentTest){
+    scoreTxt = recentTest.score+'점';
+    scoreCap = testLabel(recentTest);
+    scoreNumColor = scoreColor(recentTest.score);
   }
 
   // 약한 유형: 모든 제출의 wrong을 typemap으로 (typemap 없으면 생략)
@@ -764,7 +786,7 @@ function renderHome(){
     +'<div class="stat-grid">'
     +'<div class="stat-card blue"><div class="lbl"><i class="ti ti-target"></i> 숙제 완료율</div><div class="num">'+pct+'%</div><div class="cap">'+doneCnt+' / '+total+'개 완료</div></div>'
     +'<div class="stat-card red"><div class="lbl"><i class="ti ti-clock"></i> 대기 숙제</div><div class="num">'+waiting.length+'개</div><div class="cap">'+waitCap+'</div></div>'
-    +'<div class="stat-card teal"><div class="lbl"><i class="ti ti-chart-bar"></i> 최근 채점</div><div class="num">'+scoreTxt+'</div><div class="cap">'+esc(scoreCap)+'</div></div>'
+    +'<div class="stat-card teal"><div class="lbl"><i class="ti ti-chart-bar"></i> 최근 시험</div><div class="num" style="color:'+scoreNumColor+';">'+scoreTxt+'</div><div class="cap">'+esc(scoreCap)+'</div></div>'
     +'<div class="stat-card gold"><div class="lbl"><i class="ti ti-flame"></i> 받은 숙제</div><div class="num">'+total+'개</div><div class="cap">숙제 탭에서 확인</div></div>'
     +'</div>';
 
@@ -790,10 +812,28 @@ function renderHome(){
       }
     });
   }
+
+  // 최근 시험 점수 목록 (최근 3개)
+  if(myTests.length){
+    html+='<div class="sec-title" style="margin-top:20px;"><span class="t">최근 시험 점수</span></div>';
+    myTests.slice(0,3).forEach(function(t){
+      var pct=t.score;
+      var bar=scoreBarColor(pct), col=scoreColor(pct), bg=scoreBg(pct);
+      var numer=(t.fullScore!=null&&t.gotScore!=null)?(t.gotScore+'/'+t.fullScore):'';
+      html+='<div style="background:var(--surface);border:1px solid var(--bd);border-left:3px solid '+bar+';border-radius:0 12px 12px 0;padding:11px 13px;margin-bottom:9px;display:flex;justify-content:space-between;align-items:center;gap:10px;">'
+        +'<div style="min-width:0;flex:1;">'
+        +'<div style="font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+esc(testLabel(t))+'</div>'
+        +'<div style="font-size:10.5px;color:var(--muted);margin-top:2px;">'+esc(t.name||'')+(t.date?' · '+t.date:'')+'</div>'
+        +'</div>'
+        +'<div style="background:'+bg+';color:'+col+';font-size:13px;font-weight:500;padding:5px 11px;border-radius:8px;flex-shrink:0;text-align:center;">'+pct+'점'
+        + (numer?'<div style="font-size:9.5px;font-weight:400;opacity:.85;margin-top:1px;">'+numer+'</div>':'')
+        +'</div></div>';
+    });
+  }
+
   main.innerHTML=html;
 }
 
-// 학생: 내 숙제 목록
 function renderHwStudent(){
   var main=document.getElementById('main');
   var sid = mySid();
