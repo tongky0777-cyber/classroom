@@ -737,10 +737,17 @@ function isHwCheckedByStudent(hwId, key){
 var AIO_BOOK_NAME='All in one 공수1';
 var AIO_BOOKS={
   'All in one 공수1':{ tmKey:'올인원', units:{ unit1:'1단원 다항식', unit2:'2단원 나머지정리·인수분해', unit3:'3단원 방정식', unit4:'2권 (부등식·경우의수·행렬)' } },
-  'All in one 대수':{ tmKey:'올인원 대수', units:{ unit1_1:'1-1 지수 & 로그', unit1_2:'1-2 지수로그함수', unit2_1:'2-1 삼각함수' } }
+  'All in one 대수':{ tmKey:'올인원 대수', units:{ unit1_1:'1-1 지수 & 로그', unit1_2:'1-2 지수로그함수', unit2_1:'2-1 삼각함수' } },
+  'Only one 공수1':{ tmKey:'온리원', units:{ unit1:'1단원 다항식', unit2_1:'2-1단원 복소수', unit2_2:'2-2단원 이차방정식과 이차함수', unit2_3:'2-3단원 여러 가지 방정식과 부등식' } }
 };
-// 전 교재 단원명 통합 (레코드 표시용)
+// 전 교재 단원명 통합 (레코드 표시용 — 키 충돌 시 부정확할 수 있어 fallback 전용)
 var AIO_UNIT_NAMES=(function(){ var m={}; for(var b in AIO_BOOKS){ var u=AIO_BOOKS[b].units; for(var k in u) m[k]=u[k]; } return m; })();
+// 교재를 함께 보고 단원명 결정 (unit2_1 같은 키가 교재 간 겹쳐도 정확)
+function _aioUnitName(h){
+  if(!h || !h.unitKey) return '';
+  var b=AIO_BOOKS[_aioBookOf(h)];
+  return (b && b.units[h.unitKey]) || AIO_UNIT_NAMES[h.unitKey] || h.unitKey;
+}
 function _aioBookOf(h){ return (h && AIO_BOOKS[h.book]) ? h.book : 'All in one 공수1'; }
 function _aioTmKeyOf(h){ return AIO_BOOKS[_aioBookOf(h)].tmKey; }
 var _aioAK=null;          // 현재 풀이 중인 교재 정답표 (활성)
@@ -798,9 +805,9 @@ function renderHome(){
     waiting.slice(0,3).forEach(function(h){
       var od = h.due && h.due<today;
       if(_isAioHw(h)){
-        var uname=AIO_UNIT_NAMES[h.unitKey]||h.unitKey;
+        var uname=_aioUnitName(h);
         html+='<div style="background:var(--surface);border:1px solid var(--bd);border-left:3px solid var(--gold);border-radius:0 12px 12px 0;padding:13px;margin-bottom:9px;">'
-          +'<div style="font-size:13px;font-weight:500;">All in one '+esc(uname)+'</div>'
+          +'<div style="font-size:13px;font-weight:500;">'+esc(_aioBookOf(h))+' '+esc(uname)+'</div>'
           +'<div style="font-size:11px;color:var(--muted);margin-top:3px;">'+h.qStart+'~'+h.qEnd+'번'+(h.due?' · '+(od?'<span style="color:var(--red)">마감 초과</span>':h.due+'까지'):'')+'</div>'
           +'<button class="send-btn" style="margin-top:10px;width:100%;margin-left:0;" onclick="setTab(\'hw\')">답 입력하고 채점받기</button></div>';
       } else {
@@ -864,8 +871,8 @@ function renderHwStudent(){
     // ── 올인원 자동채점 숙제: 별도 카드 ──
     if(_isAioHw(h)){
       var sub=WRONG_SUBS[h.id];
-      var uname=AIO_UNIT_NAMES[h.unitKey]||h.unitKey;
-      var title='All in one '+uname+' '+h.qStart+'~'+h.qEnd+'번';
+      var uname=_aioUnitName(h);
+      var title=_aioBookOf(h)+' '+uname+' '+h.qStart+'~'+h.qEnd+'번';
       if(sub && sub.submittedFull){
         var c=sub.counts||{};
         html += '<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;opacity:.75;">'
@@ -939,7 +946,7 @@ function openAioSolve(hwId){
 function renderAioSolve(){
   var ctx=_aioCtx; if(!ctx) return;
   var hw=ctx.hw;
-  var uname=AIO_UNIT_NAMES[hw.unitKey]||hw.unitKey;
+  var uname=_aioUnitName(hw);
   var main=document.getElementById('main');
   var html='<div style="margin-bottom:12px;">'
     +'<button class="icon-btn" style="padding:6px 12px;font-size:13px;" onclick="setTab(\'hw\')">← 숙제 목록</button></div>'
@@ -1057,7 +1064,7 @@ function submitAio(){
     db.ref(CP('class_hw_done/')+hw.id+'/'+MY_KEY).set({ done:true, at:new Date().toISOString(), name:MY_NAME });
     if(!HW_DONE[hw.id]) HW_DONE[hw.id]={};
     HW_DONE[hw.id][MY_KEY]={done:true};
-    try{ notifyTelegram('📊 숙제 제출\n'+MY_NAME+' 학생 · '+(AIO_UNIT_NAMES[hw.unitKey]||'')+' '+hw.qStart+'~'+hw.qEnd+'번\n맞음 '+r.counts.correct+' / 틀림 '+r.counts.wrong); }catch(e){}
+    try{ notifyTelegram('📊 숙제 제출\n'+MY_NAME+' 학생 · '+_aioUnitName(hw)+' '+hw.qStart+'~'+hw.qEnd+'번\n맞음 '+r.counts.correct+' / 틀림 '+r.counts.wrong); }catch(e){}
     showAioResult(r);
   }).catch(function(){
     _aioSubmitting=false;
