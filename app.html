@@ -544,7 +544,7 @@ function renderMain(){
   if(CUR_TAB==='feed' && isAdmin){
     html+=composerHtml('자료를 올려보세요 (공지, 설명, 숙제 안내 등)','자료 올리기','feed');
   } else if(CUR_TAB==='qna' && !isAdmin){
-    html+=composerHtml('궁금한 문제를 적고, 사진을 올려보세요','질문하기','qna');
+    html+=composerHtml('궁금한 문제를 적고, 사진이나 자료 링크를 올려보세요','질문하기','qna');
   }
 
   // 게시물 목록
@@ -584,7 +584,7 @@ function composerHtml(placeholder,btnLabel,type){
   h+='<div class="preview" id="comp-preview"></div>';
   h+='<div class="comp-actions">';
   h+='<button class="icon-btn" onclick="document.getElementById(\'img-input\').click()">📷 사진</button>';
-  if(type==='feed') h+='<button class="icon-btn" onclick="openLinkInput()">🔗 파일 링크</button>';
+  if(type==='feed'||type==='qna') h+='<button class="icon-btn" onclick="openLinkInput()">🔗 파일 링크</button>';
   h+='<button class="send-btn" id="send-btn" onclick="submitPost(\''+type+'\')">'+btnLabel+'</button>';
   h+='</div>';
   h+='<input type="file" id="img-input" accept="image/*" multiple style="display:none" onchange="onPickImgs(event)">';
@@ -631,6 +631,9 @@ function postHtml(p){
         h+='<div class="post-imgs">';
         p.answer.imgs.forEach(function(src){ h+='<img src="'+src+'" onclick="openPhoto(this.src)">'; });
         h+='</div>';
+      }
+      if(p.answer.file && p.answer.file.url){
+        h+='<a class="post-file" href="'+p.answer.file.url+'" target="_blank" rel="noopener">📎 '+esc(p.answer.file.name||'첨부 자료')+' 열기</a>';
       }
       // 답변 반응
       var arid='answer_'+p.id;
@@ -1752,11 +1755,18 @@ function openLinkInput(){
   h+='</div>';
   openModal(h);
 }
+// 링크 주소 보정: https:// 빠뜨리고 붙여넣어도 자동으로 붙여줌
+function normLinkUrl(u){
+  u=(u||'').trim();
+  if(!u) return '';
+  if(/^https?:\/\//i.test(u)) return u;
+  if(u.indexOf('.')>-1 && !/\s/.test(u)) return 'https://'+u;
+  return '';
+}
 function attachLink(){
   var name=(document.getElementById('lk-name').value||'').trim();
-  var url=(document.getElementById('lk-url').value||'').trim();
-  if(!url){ toast('링크 주소를 입력해 주세요'); return; }
-  if(!/^https?:\/\//i.test(url)){ toast('http로 시작하는 올바른 링크를 넣어 주세요'); return; }
+  var url=normLinkUrl(document.getElementById('lk-url').value);
+  if(!url){ toast('올바른 링크 주소를 넣어 주세요 (드라이브 공유 링크 등)'); return; }
   if(!name){ name='첨부파일'; }
   uploadFile={ name:name, url:url };
   closeModal();
@@ -1831,12 +1841,18 @@ function saveEditPost(pid){
 
 // ===== 답변 (관리자) =====
 var _answerImgs=[];
+var _answerLink=null;
 function openAnswer(pid){
   _answerImgs=[];
   var p=POSTS[pid]; var existing=p&&p.answer?p.answer:{};
   if(existing.imgs) _answerImgs=existing.imgs.slice();
+  _answerLink=(existing.file&&existing.file.url)?{name:existing.file.name||'첨부 자료',url:existing.file.url}:null;
   var h='<h3>답변 달기</h3>';
   h+='<textarea class="fld" id="ans-text" style="min-height:90px;" placeholder="설명을 적어주세요 (캡처 후 Ctrl+V 로 사진 붙여넣기 가능)" onpaste="onAnsPaste(event)">'+esc(existing.text||'')+'</textarea>';
+  h+='<div style="display:flex;align-items:center;gap:8px;margin-top:8px;">';
+  h+='<span style="font-size:15px;">🔗</span>';
+  h+='<input type="text" class="fld" id="ans-link" placeholder="자료 링크 (구글드라이브 등) — 선택" value="'+esc(_answerLink?_answerLink.url:'')+'" style="flex:1;margin:0;">';
+  h+='</div>';
   h+='<div class="preview" id="ans-preview"></div>';
   h+='<div style="display:flex;gap:8px;flex-wrap:wrap;">';
   h+='<button class="icon-btn" onclick="document.getElementById(\'ans-img\').click()">📷 풀이 사진</button>';
@@ -1901,9 +1917,16 @@ function renderAnsPreview(){
 function rmAnsImg(i){ _answerImgs.splice(i,1); renderAnsPreview(); }
 function saveAnswer(pid){
   var text=(document.getElementById('ans-text').value||'').trim();
-  if(!text && _answerImgs.length===0){ toast('답변 내용을 입력해 주세요'); return; }
+  var linkRaw=(document.getElementById('ans-link')||{}).value||'';
+  var linkUrl='';
+  if(linkRaw.trim()){
+    linkUrl=normLinkUrl(linkRaw);
+    if(!linkUrl){ toast('자료 링크 주소가 올바르지 않아요. 드라이브 공유 링크를 다시 확인해 주세요'); return; }
+  }
+  if(!text && _answerImgs.length===0 && !linkUrl){ toast('답변 내용을 입력해 주세요'); return; }
   var ans={ text:text, by:MY_NAME, at:new Date().toISOString() };
   if(_answerImgs.length) ans.imgs=_answerImgs.slice();
+  if(linkUrl) ans.file={ name:(_answerLink&&_answerLink.url===linkUrl&&_answerLink.name)||'첨부 자료', url:linkUrl };
   db.ref(CP('class_posts/')+CURRENT_CLASS+'/'+pid+'/answer').set(ans).then(function(){
     closeModal(); toast('답변을 저장했어요'); loadPosts();
   });
