@@ -659,13 +659,43 @@ var HW_STUDENTS = [];  // 대시보드 학생 (bjm_students) — classKey 매칭
 var HW_DONE = {};      // 완료 체크 (class_hw_done) {hwId:{classKey:{done,at}}}
 var TEST_LIST = [];    // 대시보드 시험 점수 (bjm_tests) — 선생님이 입력한 테스트 결과
 
+var _hwListenersOn=false;   // 실시간 리스너 중복 등록 방지
+var _hwReadyCount=0;        // 최초 4개 노드 도착 여부
+var _hwInitCb=null;         // 최초 로드 완료 콜백
+
+// 데이터가 바뀌면 호출: 숙제 풀이 입력 중이 아닐 때, 숙제/홈 탭을 보고 있으면 자동 갱신
+function onHwDataChange(){
+  if(_hwReadyCount<4) return;          // 최초 로드 전에는 자동 갱신 안 함
+  if(_aioSubmitting) return;           // 제출 처리 중에는 건드리지 않음
+  if(document.getElementById('aio-solve')) return; // 문제 풀이 화면이 열려 있으면 방해 안 함
+  if(CUR_TAB==='hw' || CUR_TAB==='home'){
+    var sid=mySid();
+    if(sid) loadMyWrongSubs(renderMain); else renderMain();
+  }
+}
+
 function loadHomework(cb){
-  var done=0; function step(){ done++; if(done>=4 && cb) loadMyWrongSubs(cb); }
+  // 이미 실시간 리스너가 켜져 있으면: 데이터는 항상 최신이므로 바로 콜백
+  if(_hwListenersOn){
+    if(_hwReadyCount>=4){ var sid=mySid(); if(sid) loadMyWrongSubs(cb); else if(cb) cb(); }
+    else { _hwInitCb=cb; }
+    return;
+  }
+  _hwListenersOn=true; _hwReadyCount=0; _hwInitCb=cb;
+  function ready(){
+    if(_hwReadyCount<4){
+      _hwReadyCount++;
+      if(_hwReadyCount===4){ var sid=mySid(); var done=_hwInitCb; _hwInitCb=null;
+        if(sid) loadMyWrongSubs(done); else if(done) done(); }
+    } else {
+      onHwDataChange();   // 최초 로드 이후의 변경 → 자동 갱신
+    }
+  }
   try{
-    db.ref('bjm_homework').once('value').then(function(s){ var v=s.val(); HW_LIST = v? (Array.isArray(v)?v:Object.values(v)) : []; step(); }).catch(step);
-    db.ref('bjm_students').once('value').then(function(s){ var v=s.val(); HW_STUDENTS = v? (Array.isArray(v)?v:Object.values(v)) : []; step(); }).catch(step);
-    db.ref(CP('class_hw_done')).once('value').then(function(s){ HW_DONE = s.val()||{}; step(); }).catch(step);
-    db.ref('bjm_tests').once('value').then(function(s){ var v=s.val(); TEST_LIST = v? (Array.isArray(v)?v:Object.values(v)) : []; step(); }).catch(step);
+    db.ref('bjm_homework').on('value', function(s){ var v=s.val(); HW_LIST = v? (Array.isArray(v)?v:Object.values(v)) : []; ready(); }, function(){ ready(); });
+    db.ref('bjm_students').on('value', function(s){ var v=s.val(); HW_STUDENTS = v? (Array.isArray(v)?v:Object.values(v)) : []; ready(); }, function(){ ready(); });
+    db.ref(CP('class_hw_done')).on('value', function(s){ HW_DONE = s.val()||{}; ready(); }, function(){ ready(); });
+    db.ref('bjm_tests').on('value', function(s){ var v=s.val(); TEST_LIST = v? (Array.isArray(v)?v:Object.values(v)) : []; ready(); }, function(){ ready(); });
   }catch(e){ if(cb) cb(); }
 }
 
@@ -692,16 +722,23 @@ function scoreColor(pct){ return pct>=90?'#4fb286':pct>=70?'#d2a64a':'#e07a86'; 
 function scoreBarColor(pct){ return pct>=90?'#1f6f5c':pct>=70?'#d2a64a':'#e07a86'; }
 function scoreBg(pct){ return pct>=90?'#0d2118':pct>=70?'#1c1505':'#1f0e10'; }
 
-// 올인원 자동채점 숙제에 대한 내 제출 기록 로드 (mySid 기준)
+var _wrongListenersOn={};   // {hwId:true} 중복 등록 방지
+// 올인원 자동채점 숙제에 대한 내 제출 기록 로드 (mySid 기준) — 실시간
 function loadMyWrongSubs(cb){
   var sid=mySid();
   var aioHw=HW_LIST.filter(function(h){ return _isAioHw(h) && hwForSid(h, sid); });
   if(!sid || !aioHw.length){ if(cb) cb(); return; }
-  var left=aioHw.length;
-  aioHw.forEach(function(h){
-    db.ref('wronganswers/'+h.id+'/'+sid).once('value').then(function(s){
-      WRONG_SUBS[h.id]=s.val()||null; if(--left<=0 && cb) cb();
-    }).catch(function(){ if(--left<=0 && cb) cb(); });
+  var pending=aioHw.filter(function(h){ return !_wrongListenersOn[h.id]; });
+  if(!pending.length){ if(cb) cb(); return; }  // 이미 다 구독 중이면 최신값 보유
+  var left=pending.length;
+  pending.forEach(function(h){
+    _wrongListenersOn[h.id]=true;
+    var first=true;
+    db.ref('wronganswers/'+h.id+'/'+sid).on('value', function(s){
+      WRONG_SUBS[h.id]=s.val()||null;
+      if(first){ first=false; if(--left<=0 && cb) cb(); }
+      else { onHwDataChange(); }   // 이후 변경(선생님 채점 등) → 자동 갱신
+    }, function(){ if(first){ first=false; if(--left<=0 && cb) cb(); } });
   });
 }
 
