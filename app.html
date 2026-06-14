@@ -919,10 +919,34 @@ function renderHwStudent(){
       var title=_aioBookOf(h)+' '+uname+' '+h.qStart+'~'+h.qEnd+'번';
       if(sub && sub.submittedFull){
         var c=sub.counts||{};
-        html += '<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;opacity:.75;">'
+        var wrongArr=(sub.wrong||[]).slice().sort(function(a,b){return a-b;});
+        var pendArr=(sub.pending||[]).slice().sort(function(a,b){return a-b;});
+        var detailHtml='';
+        if(wrongArr.length || pendArr.length){
+          detailHtml='<div id="wd-'+h.id+'" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);">';
+          if(wrongArr.length){
+            detailHtml+='<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">틀린 번호</div>'
+              +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
+              +wrongArr.map(function(n){ return '<span style="background:var(--red-bg);color:var(--red);font-size:13px;font-weight:700;padding:5px 10px;border-radius:8px;">'+n+'번</span>'; }).join('')
+              +'</div>';
+          }
+          if(pendArr.length){
+            detailHtml+='<div style="font-size:11px;color:var(--muted);margin:10px 0 6px;">직접 확인 (△)</div>'
+              +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
+              +pendArr.map(function(n){ return '<span style="background:var(--surface2);color:var(--muted);font-size:13px;padding:5px 10px;border-radius:8px;">'+n+'번</span>'; }).join('')
+              +'</div>';
+          }
+          detailHtml+='</div>';
+        }
+        var toggleBtn=(wrongArr.length||pendArr.length)
+          ? '<button class="icon-btn" style="margin-top:9px;padding:5px 12px;font-size:12px;" onclick="toggleWrongDetail(\''+h.id+'\',this)">틀린 번호 보기</button>'
+          : '<div style="font-size:12px;color:var(--teal);margin-top:7px;">전부 맞았어요 🎉</div>';
+        html += '<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;">'
           +'<div style="font-size:13.5px;font-weight:700;">📊 '+esc(title)+'</div>'
           +'<div style="font-size:12px;color:var(--teal);margin-top:5px;">제출 완료 · 맞음 '+(c.correct!=null?c.correct:'-')+' / 틀림 '+(c.wrong!=null?c.wrong:'-')+(c.pending?' / △'+c.pending:'')+'</div>'
           +'<div style="font-size:11px;color:var(--muted);margin-top:3px;">'+(sub.submittedAt||'')+' 제출 · 수정은 선생님께</div>'
+          +toggleBtn
+          +detailHtml
           +'</div>';
       } else {
         html += '<div style="background:var(--surface);border:1.5px solid '+(overdue?'var(--red)':'var(--gold)')+';border-radius:14px;padding:14px;margin-bottom:10px;">'
@@ -966,6 +990,15 @@ function renderHwStudent(){
     }
   });
   main.innerHTML += html;
+}
+
+// 틀린 번호 펼침/접힘
+function toggleWrongDetail(hwId, btn){
+  var el=document.getElementById('wd-'+hwId);
+  if(!el) return;
+  var open = el.style.display!=='none';
+  el.style.display = open ? 'none' : 'block';
+  if(btn) btn.textContent = open ? '틀린 번호 보기' : '접기';
 }
 
 // ===== 올인원 자동채점 풀이 화면 (앱 내) =====
@@ -1119,6 +1152,26 @@ function submitAio(){
 
 function showAioResult(r){
   var c=r.counts;
+  var wrongArr=(r.wrong||[]).slice().sort(function(a,b){return a-b;});
+  var pendArr=(r.pending||[]).slice().sort(function(a,b){return a-b;});
+  var numHtml='';
+  if(wrongArr.length){
+    numHtml+='<div style="margin-top:14px;text-align:left;border-top:1px solid var(--line);padding-top:12px;">'
+      +'<div style="font-size:12px;color:var(--muted);margin-bottom:7px;">틀린 번호</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
+      +wrongArr.map(function(n){ return '<span style="background:var(--red-bg);color:var(--red);font-size:13px;font-weight:700;padding:6px 11px;border-radius:8px;">'+n+'번</span>'; }).join('')
+      +'</div></div>';
+  }
+  if(pendArr.length){
+    numHtml+='<div style="margin-top:'+(wrongArr.length?'10px':'14px;border-top:1px solid var(--line);padding-top:12px')+';text-align:left;">'
+      +'<div style="font-size:12px;color:var(--muted);margin-bottom:7px;">직접 확인 (△)</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
+      +pendArr.map(function(n){ return '<span style="background:var(--surface2);color:var(--muted);font-size:13px;padding:6px 11px;border-radius:8px;">'+n+'번</span>'; }).join('')
+      +'</div></div>';
+  }
+  if(!wrongArr.length && !pendArr.length){
+    numHtml='<div style="margin-top:14px;font-size:13px;color:var(--teal);font-weight:700;">전부 맞았어요 🎉</div>';
+  }
   var main=document.getElementById('main');
   main.innerHTML='<div style="text-align:center;padding:30px 16px;">'
     +'<div style="font-size:42px;">✅</div>'
@@ -1128,6 +1181,7 @@ function showAioResult(r){
     +'<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);"><span>맞은 문제</span><b style="color:var(--teal)">'+c.correct+'개</b></div>'
     +'<div style="display:flex;justify-content:space-between;padding:7px 0;'+(c.pending?'border-bottom:1px solid var(--line);':'')+'"><span>틀린 문제</span><b style="color:var(--red)">'+c.wrong+'개</b></div>'
     +(c.pending?'<div style="display:flex;justify-content:space-between;padding:7px 0;"><span>직접확인(△)</span><b>'+c.pending+'개</b></div>':'')
+    +numHtml
     +'</div>'
     +'<button class="send-btn" style="margin-top:18px;padding:12px 28px;" onclick="setTab(\'hw\')">숙제 목록으로</button></div>';
 }
