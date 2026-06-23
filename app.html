@@ -2357,9 +2357,10 @@ function updateNotifyButton(){
   var btn = document.getElementById('notify-btn');
   if(!btn) return;
   if(!_pushSupported()){ btn.style.display='none'; return; }
+  // 여기까지 왔으면 버튼을 보이게 함
+  btn.style.display='inline-block';
   // iOS인데 홈화면 설치 안 됐으면 안내만
   if(_isIos() && !_isStandalone()){
-    btn.style.display='';
     btn.textContent = '🔔 알림 받기(홈화면 추가 필요)';
     btn.onclick = function(){ alert('아이폰은 먼저 이 앱을 홈 화면에 추가해야 알림을 받을 수 있어요.\n\n사파리 하단 공유 버튼 → "홈 화면에 추가" 후, 홈 화면의 앱 아이콘으로 다시 열어주세요.'); };
     return;
@@ -2371,6 +2372,7 @@ function updateNotifyButton(){
     btn.onclick = function(){ alert('이미 알림이 켜져 있어요.'); };
   } else if(perm === 'denied'){
     btn.textContent = '🔔 알림 차단됨';
+    btn.style.opacity = '1';
     btn.onclick = function(){ alert('알림이 차단되어 있어요. 브라우저/폰 설정에서 이 사이트의 알림을 허용해주세요.'); };
   } else {
     btn.textContent = '🔔 알림 켜기';
@@ -2425,6 +2427,9 @@ if(_pushSupported()){
 } else {
   updateNotifyButton();
 }
+// 로그인/렌더 완료 후에도 한 번 더 갱신 (버튼이 늦게 만들어지는 경우 대비)
+setTimeout(updateNotifyButton, 1500);
+setTimeout(updateNotifyButton, 3000);
 </script>
 
 </body>
