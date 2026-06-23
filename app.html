@@ -131,6 +131,7 @@
   <div class="ti"><span class="mark"></span>김병진수학연구소<span style="font-size:12px;font-weight:500;color:var(--muted);margin-left:6px;">클래스</span></div>
   <div style="display:flex;align-items:center;gap:10px;">
     <span class="who"><b id="who-name"></b> <span id="who-role"></span> <a id="who-grade-edit" onclick="editMyGrade()" style="display:none;font-size:11px;color:rgba(255,255,255,.8);text-decoration:underline;cursor:pointer;margin-left:4px;"></a></span>
+    <button id="notify-btn" class="logout" style="display:none;">🔔 알림 켜기</button>
     <button class="logout" onclick="doLogout()">로그아웃</button>
   </div>
 </div>
@@ -2314,5 +2315,117 @@ loadAll(function(){
 });
 });
 </script>
+<script>
+/* ===== 웹 푸시 알림 (1단계: 구독 등록) =====
+ * 동작: 사용자가 '알림 켜기'를 누르면 권한 요청 → 구독 생성 →
+ *       구독 정보를 Firebase의 push_subscriptions/{MY_KEY} 에 저장.
+ * 실제 발송(2·3단계)은 별도 서버/Actions에서 이 구독 정보로 보낸다.
+ */
+
+// VAPID 공개키 — 2단계에서 생성해 여기에 넣는다 (현재는 비어 있음)
+var VAPID_PUBLIC_KEY = "BME6F_qf-gJLxstyTbwWyXW4GTJl1r8x6pAjlOB0lJ9U9-O2gGlbycbP8aKKaH87I8eCb6cVOnbo7_2V4EAfF5o";
+
+// base64 → Uint8Array (푸시 구독에 필요한 형식 변환)
+function _urlBase64ToUint8Array(base64String){
+  var padding = '='.repeat((4 - base64String.length % 4) % 4);
+  var base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  var raw = atob(base64);
+  var arr = new Uint8Array(raw.length);
+  for (var i=0;i<raw.length;i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
+// 푸시 지원 환경인지
+function _pushSupported(){
+  return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
+}
+
+// iOS인지 + 홈화면 설치(standalone) 상태인지 (iOS는 설치해야 알림 가능)
+function _isIos(){ return /iphone|ipad|ipod/i.test(navigator.userAgent); }
+function _isStandalone(){ return window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches; }
+
+var _swReg = null;
+
+// 서비스 워커 등록 (앱 로드 시 1회)
+function registerServiceWorker(){
+  if(!('serviceWorker' in navigator)) return Promise.reject('서비스워커 미지원');
+  return navigator.serviceWorker.register('./sw.js').then(function(reg){ _swReg = reg; return reg; });
+}
+
+// 현재 알림 상태에 따라 버튼 표시 갱신
+function updateNotifyButton(){
+  var btn = document.getElementById('notify-btn');
+  if(!btn) return;
+  if(!_pushSupported()){ btn.style.display='none'; return; }
+  // iOS인데 홈화면 설치 안 됐으면 안내만
+  if(_isIos() && !_isStandalone()){
+    btn.style.display='';
+    btn.textContent = '🔔 알림 받기(홈화면 추가 필요)';
+    btn.onclick = function(){ alert('아이폰은 먼저 이 앱을 홈 화면에 추가해야 알림을 받을 수 있어요.\n\n사파리 하단 공유 버튼 → "홈 화면에 추가" 후, 홈 화면의 앱 아이콘으로 다시 열어주세요.'); };
+    return;
+  }
+  var perm = Notification.permission;
+  if(perm === 'granted'){
+    btn.textContent = '🔔 알림 켜짐';
+    btn.style.opacity = '0.6';
+    btn.onclick = function(){ alert('이미 알림이 켜져 있어요.'); };
+  } else if(perm === 'denied'){
+    btn.textContent = '🔔 알림 차단됨';
+    btn.onclick = function(){ alert('알림이 차단되어 있어요. 브라우저/폰 설정에서 이 사이트의 알림을 허용해주세요.'); };
+  } else {
+    btn.textContent = '🔔 알림 켜기';
+    btn.style.opacity = '1';
+    btn.onclick = enablePush;
+  }
+}
+
+// 알림 켜기 (권한 요청 + 구독 + 저장)
+function enablePush(){
+  if(!_pushSupported()){ alert('이 브라우저는 알림을 지원하지 않아요.'); return; }
+  if(VAPID_PUBLIC_KEY === "__VAPID_PUBLIC_KEY__"){
+    alert('알림 발송 설정이 아직 완료되지 않았어요. (관리자 설정 대기 중)');
+    return;
+  }
+  Notification.requestPermission().then(function(perm){
+    if(perm !== 'granted'){ updateNotifyButton(); return; }
+    var regP = _swReg ? Promise.resolve(_swReg) : registerServiceWorker();
+    regP.then(function(reg){
+      return reg.pushManager.getSubscription().then(function(existing){
+        if(existing) return existing;
+        return reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: _urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+        });
+      });
+    }).then(function(sub){
+      // 구독 정보를 Firebase에 저장 (MY_KEY 기준)
+      if(typeof MY_KEY === 'undefined' || !MY_KEY){ alert('로그인 후 이용해주세요.'); return; }
+      var subData = JSON.parse(JSON.stringify(sub));
+      var rec = {
+        endpoint: subData.endpoint,
+        keys: subData.keys,
+        name: (typeof MY_NAME!=='undefined'? MY_NAME : ''),
+        role: (typeof MY_ROLE!=='undefined'? MY_ROLE : 'student'),
+        updatedAt: new Date().toISOString()
+      };
+      return db.ref(CP('push_subscriptions/')+MY_KEY).set(rec);
+    }).then(function(){
+      updateNotifyButton();
+      alert('알림이 켜졌어요! 이제 새 숙제·공지 등을 알림으로 받을 수 있어요.');
+    }).catch(function(err){
+      console.error('푸시 구독 실패:', err);
+      alert('알림 켜기에 실패했어요. 잠시 후 다시 시도해주세요.');
+    });
+  });
+}
+
+// 앱 로드 시 서비스 워커 등록 + 버튼 상태 갱신
+if(_pushSupported()){
+  registerServiceWorker().then(function(){ updateNotifyButton(); }).catch(function(){ updateNotifyButton(); });
+} else {
+  updateNotifyButton();
+}
+</script>
+
 </body>
 </html>
