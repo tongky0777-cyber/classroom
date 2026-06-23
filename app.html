@@ -2369,7 +2369,11 @@ function updateNotifyButton(){
   if(perm === 'granted'){
     btn.textContent = '🔔 알림 켜짐';
     btn.style.opacity = '0.6';
-    btn.onclick = function(){ alert('이미 알림이 켜져 있어요.'); };
+    btn.onclick = function(){
+      if(confirm('알림을 다시 설정할까요? (문제가 있을 때 눌러주세요)')){ enablePush(); }
+    };
+    // 자동으로 구독 최신화 (공개키 바뀐 경우 새 키로 갱신)
+    ensureFreshSubscription();
   } else if(perm === 'denied'){
     btn.textContent = '🔔 알림 차단됨';
     btn.style.opacity = '1';
@@ -2379,6 +2383,50 @@ function updateNotifyButton(){
     btn.style.opacity = '1';
     btn.onclick = enablePush;
   }
+}
+
+// 권한은 있으나 구독이 옛 공개키일 수 있음 → 현재 공개키와 비교해 자동 재구독
+function ensureFreshSubscription(){
+  if(Notification.permission !== 'granted') return;
+  if(typeof MY_KEY === 'undefined' || !MY_KEY) return;
+  var regP = _swReg ? Promise.resolve(_swReg) : registerServiceWorker();
+  regP.then(function(reg){
+    return reg.pushManager.getSubscription().then(function(existing){
+      var targetKey = _urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+      function doSubscribe(){
+        return reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey: targetKey })
+          .then(function(sub){
+            var subData = JSON.parse(JSON.stringify(sub));
+            return db.ref(CP('push_subscriptions/')+MY_KEY).set({
+              endpoint: subData.endpoint, keys: subData.keys,
+              name: (typeof MY_NAME!=='undefined'? MY_NAME : ''),
+              role: (typeof MY_ROLE!=='undefined'? MY_ROLE : 'student'),
+              updatedAt: new Date().toISOString()
+            });
+          });
+      }
+      if(!existing){ return doSubscribe(); }
+      // 기존 구독의 공개키가 현재 키와 같은지 확인
+      var cur = existing.options && existing.options.applicationServerKey;
+      var same = false;
+      if(cur){
+        var a = new Uint8Array(cur), b = targetKey;
+        if(a.length === b.length){ same = true; for(var i=0;i<a.length;i++){ if(a[i]!==b[i]){ same=false; break; } } }
+      }
+      if(same){
+        // 키 같으면 저장만 최신화
+        var sd = JSON.parse(JSON.stringify(existing));
+        return db.ref(CP('push_subscriptions/')+MY_KEY).set({
+          endpoint: sd.endpoint, keys: sd.keys,
+          name: (typeof MY_NAME!=='undefined'? MY_NAME : ''),
+          role: (typeof MY_ROLE!=='undefined'? MY_ROLE : 'student'),
+          updatedAt: new Date().toISOString()
+        });
+      }
+      // 키 다르면 해지 후 새로 구독
+      return existing.unsubscribe().then(doSubscribe);
+    });
+  }).catch(function(e){ console.log('구독 최신화 건너뜀:', e); });
 }
 
 // 알림 켜기 (권한 요청 + 구독 + 저장)
@@ -2392,9 +2440,12 @@ function enablePush(){
     if(perm !== 'granted'){ updateNotifyButton(); return; }
     var regP = _swReg ? Promise.resolve(_swReg) : registerServiceWorker();
     regP.then(function(reg){
+      // 기존 구독이 있으면 일단 해지하고(옛 공개키일 수 있음) 새 키로 다시 구독
       return reg.pushManager.getSubscription().then(function(existing){
-        if(existing) return existing;
-        return reg.pushManager.subscribe({
+        if(existing){ return existing.unsubscribe().then(function(){ return reg; }); }
+        return reg;
+      }).then(function(reg2){
+        return reg2.pushManager.subscribe({
           userVisibleOnly: true,
           applicationServerKey: _urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
         });
