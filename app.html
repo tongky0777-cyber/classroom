@@ -544,6 +544,14 @@ function renderMain(){
     return;
   }
 
+  // 오늘의 문제 탭 (학생만)
+  if(CUR_TAB==='daily'){
+    document.getElementById('main').innerHTML = '';
+    renderDailyStudent();
+    renderTabbar();
+    return;
+  }
+
   var html='';
   // 작성 영역
   if(CUR_TAB==='feed' && isAdmin){
@@ -575,7 +583,7 @@ function renderTabbar(){
     tabs=[ ['feed','ti-speakerphone','공지'], ['hw','ti-book','숙제 현황'], ['planner','ti-calendar','플래너'], ['qna','ti-message','질문'] ];
     if(isFullAdmin) tabs.push(['manage','ti-settings','반 관리']);
   } else {
-    tabs=[ ['home','ti-home','홈'], ['hw','ti-book','숙제'], ['planner','ti-calendar','플래너'], ['qna','ti-message','질문'], ['feed','ti-speakerphone','공지'] ];
+    tabs=[ ['home','ti-home','홈'], ['daily','ti-target','오늘문제'], ['hw','ti-book','숙제'], ['planner','ti-calendar','플래너'], ['qna','ti-message','질문'], ['feed','ti-speakerphone','공지'] ];
   }
   bar.innerHTML=tabs.map(function(t){
     var on=(CUR_TAB===t[0]);
@@ -656,7 +664,7 @@ function postHtml(p){
   return h;
 }
 
-function setTab(t){ CUR_TAB=t; uploadImgs=[]; uploadFile=null; plannerImgs=[]; if(t==='planner'){ loadPlanners(renderMain); } else if(t==='hw'){ loadHomework(renderMain); } else if(t==='home'){ loadHomework(renderMain); } else { renderMain(); } }
+function setTab(t){ CUR_TAB=t; uploadImgs=[]; uploadFile=null; plannerImgs=[]; if(t==='planner'){ loadPlanners(renderMain); } else if(t==='hw'){ loadHomework(renderMain); } else if(t==='home'){ loadHomework(renderMain); } else if(t==='daily'){ loadDaily(renderMain); } else { renderMain(); } }
 
 // ===== 숙제 연동 (대시보드 bjm_homework ↔ 클래스룸) =====
 var HW_LIST = [];      // 대시보드 숙제 (bjm_homework)
@@ -801,6 +809,141 @@ var _aioAK=null;          // 현재 풀이 중인 교재 정답표 (활성)
 var _aioAKCache={};       // tmKey → 정답표 캐시
 var WRONG_SUBS={};        // {hwId: submission}  내 제출 캐시
 function _isAioHw(h){ return h && AIO_BOOKS[h.book] && h.unitKey && h.qStart!=null && h.qEnd!=null; }
+
+// ===== 오늘의 문제 (학생) =====
+var DAILY_PROBS = [];   // bjm_daily_problems
+var DAILY_SUBS = {};    // bjm_daily_subs {probId:{sid:{answer,correct,at}}}
+var _dailyListenersOn = false;
+
+function loadDaily(cb){
+  if(_dailyListenersOn){ if(cb) cb(); return; }
+  _dailyListenersOn = true;
+  var got=0; function ready(){ got++; if(got>=2 && cb){ cb(); cb=null; } if(got>2){ if(CUR_TAB==='daily' && !document.getElementById('daily-solve-active')) renderMain(); } }
+  try{
+    db.ref('bjm_daily_problems').on('value', function(s){ var v=s.val(); DAILY_PROBS = v? (Array.isArray(v)?v.filter(Boolean):Object.values(v)) : []; ready(); }, function(){ ready(); });
+    db.ref('bjm_daily_subs').on('value', function(s){ DAILY_SUBS = s.val()||{}; ready(); }, function(){ ready(); });
+  }catch(e){ if(cb) cb(); }
+}
+
+// 정답 비교 (단답형은 공백 제거 후 비교)
+function dailyIsCorrect(prob, answer){
+  if(prob.type==='mc') return String(prob.answer)===String(answer);
+  var norm=function(x){ return String(x||'').replace(/\s+/g,'').replace(/\s/g,''); };
+  return norm(prob.answer)===norm(answer);
+}
+
+function renderDailyStudent(){
+  var main=document.getElementById('main');
+  var sid=mySid();
+  // 최신 날짜순 정렬
+  var probs=DAILY_PROBS.slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+  if(!probs.length){
+    main.innerHTML='<div style="padding:40px 20px;text-align:center;color:var(--muted2);"><i class="ti ti-target" style="font-size:40px;opacity:.4;"></i><div style="margin-top:12px;font-size:14px;">아직 등록된 문제가 없어요.</div></div>';
+    return;
+  }
+  // 날짜별 그룹
+  var byDate={};
+  probs.forEach(function(p){ (byDate[p.date]=byDate[p.date]||[]).push(p); });
+  var dates=Object.keys(byDate).sort(function(a,b){ return b.localeCompare(a); });
+
+  var html='<div style="padding:12px 14px 80px;">';
+  html+='<div style="font-size:19px;font-weight:800;margin-bottom:4px;">🎯 오늘의 문제</div>';
+  html+='<div style="font-size:12.5px;color:var(--muted2);margin-bottom:16px;">문제를 풀고 답을 제출하면 풀이를 볼 수 있어요.</div>';
+
+  dates.forEach(function(date){
+    html+='<div style="font-size:13px;font-weight:700;color:var(--blue);margin:14px 0 8px;">'+dailyDateLabel(date)+'</div>';
+    byDate[date].forEach(function(p, i){
+      var mine = sid && DAILY_SUBS[p.id] && DAILY_SUBS[p.id][sid];
+      var solved = mine && mine.correct;
+      html+='<div class="card" style="background:var(--surface);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:10px;">';
+      html+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">';
+      if(p.tag) html+='<span style="font-size:11px;background:var(--teal);color:#fff;padding:2px 9px;border-radius:100px;">'+esc(p.tag)+'</span>';
+      html+='<span style="font-size:11px;color:var(--muted2);">'+(p.type==='mc'?'객관식':'단답형')+'</span>';
+      if(solved) html+='<span style="margin-left:auto;font-size:12px;color:var(--teal-l);font-weight:700;">✓ 해결</span>';
+      html+='</div>';
+      // 문제 이미지
+      html+='<img src="'+p.imgQ+'" style="width:100%;border:1px solid var(--bd);border-radius:8px;cursor:zoom-in;" onclick="dailyZoom(\''+p.id+'\')">';
+      // 답 입력/결과 영역
+      html+='<div id="daily-ans-'+p.id+'" style="margin-top:12px;">';
+      html+=dailyAnswerAreaHtml(p, mine);
+      html+='</div>';
+      html+='</div>';
+    });
+  });
+  html+='</div>';
+  main.innerHTML=html;
+}
+
+function dailyAnswerAreaHtml(p, mine){
+  // 이미 정답 맞힌 경우 → 풀이 공개
+  if(mine && mine.correct){
+    return '<div style="background:var(--deep,#05221b);border:1px solid var(--teal);border-radius:8px;padding:10px;color:var(--teal-l);font-size:13px;font-weight:600;margin-bottom:8px;">✓ 정답이에요! 풀이를 확인하세요.</div>'
+      + '<img src="'+p.imgA+'" style="width:100%;border:1px solid var(--bd);border-radius:8px;cursor:zoom-in;" onclick="dailyZoomA(\''+p.id+'\')">';
+  }
+  // 미해결 (틀린 적 있으면 안내 문구)
+  var retryMsg = (mine && !mine.correct) ? '<div style="font-size:12.5px;color:#e0a04a;margin-bottom:8px;">다시 한번 고민해보세요 🤔</div>' : '';
+  var input;
+  if(p.type==='mc'){
+    input='<div style="display:flex;gap:6px;flex-wrap:wrap;" id="daily-mc-'+p.id+'">';
+    ['①','②','③','④','⑤'].forEach(function(sym,idx){
+      input+='<button onclick="dailyPickMc(\''+p.id+'\','+(idx+1)+')" data-v="'+(idx+1)+'" class="daily-mc-btn" style="width:44px;height:44px;border-radius:10px;border:1.5px solid var(--bd);background:var(--bg2);color:var(--ink);font-size:17px;cursor:pointer;">'+sym+'</button>';
+    });
+    input+='</div>';
+  } else {
+    input='<input id="daily-short-'+p.id+'" placeholder="답 입력 (예: 12)" style="width:100%;background:var(--bg2);border:1.5px solid var(--bd);border-radius:10px;padding:12px;font-size:15px;color:var(--ink);">';
+  }
+  return retryMsg + input
+    + '<button onclick="dailySubmit(\''+p.id+'\')" style="width:100%;margin-top:10px;height:44px;border-radius:10px;border:0;background:var(--teal);color:#fff;font-size:15px;font-weight:600;cursor:pointer;">제출하기</button>';
+}
+
+var _dailyMcPick = {};  // {probId:선택번호}
+function dailyPickMc(pid, v){
+  _dailyMcPick[pid]=v;
+  var wrap=document.getElementById('daily-mc-'+pid); if(!wrap) return;
+  wrap.querySelectorAll('.daily-mc-btn').forEach(function(b){
+    var on=(+b.getAttribute('data-v')===v);
+    b.style.border='1.5px solid '+(on?'var(--teal-l)':'var(--bd)');
+    b.style.background=on?'var(--teal)':'var(--bg2)';
+    b.style.color=on?'#fff':'var(--ink)';
+  });
+}
+
+function dailySubmit(pid){
+  var sid=mySid();
+  if(!sid){ alert('학생 정보를 찾을 수 없어요. 선생님께 클래스룸 연결을 요청해주세요.'); return; }
+  var prob=DAILY_PROBS.find(function(p){ return p.id===pid; });
+  if(!prob) return;
+  var answer;
+  if(prob.type==='mc'){
+    answer=_dailyMcPick[pid];
+    if(!answer){ alert('답을 선택해주세요'); return; }
+  } else {
+    var el=document.getElementById('daily-short-'+pid);
+    answer=el? el.value.trim() : '';
+    if(!answer){ alert('답을 입력해주세요'); return; }
+  }
+  var correct=dailyIsCorrect(prob, answer);
+  // 저장: 맞으면 확정 기록, 틀리면 마지막 시도만 기록(재시도 가능)
+  var rec={ answer:String(answer), correct:correct, at:new Date().toISOString() };
+  db.ref('bjm_daily_subs/'+pid+'/'+sid).set(rec).then(function(){
+    DAILY_SUBS[pid]=DAILY_SUBS[pid]||{}; DAILY_SUBS[pid][sid]=rec;
+    // 해당 문제 영역만 갱신
+    var area=document.getElementById('daily-ans-'+pid);
+    if(area) area.innerHTML=dailyAnswerAreaHtml(prob, rec);
+    if(!correct){ /* 틀림: 안내는 area에 이미 반영됨 */ }
+  }).catch(function(e){ alert('제출 중 오류가 났어요. 다시 시도해주세요.'); });
+}
+
+function dailyDateLabel(d){
+  if(!d) return '';
+  var parts=d.split('-'); if(parts.length<3) return d;
+  var today=new Date().toISOString().slice(0,10);
+  var suffix = (d===today)?' (오늘)':'';
+  return parts[1]+'월 '+parts[2]+'일'+suffix;
+}
+function dailyZoom(pid){ var p=DAILY_PROBS.find(function(x){return x.id===pid;}); if(p) _openImgFull(p.imgQ); }
+function dailyZoomA(pid){ var p=DAILY_PROBS.find(function(x){return x.id===pid;}); if(p) _openImgFull(p.imgA); }
+function _openImgFull(src){ var w=window.open('','_blank'); if(w) w.document.write('<body style="margin:0;background:#000;"><img src="'+src+'" style="width:100%;"></body>'); }
 
 // ===== 학생 홈 대시보드 =====
 function renderHome(){
