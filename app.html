@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>김병진수학연구소 클래스</title>
 <link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <meta name="theme-color" content="#0a0e13">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.1.0/dist/tabler-icons.min.css">
@@ -680,7 +681,7 @@ var _hwInitCb=null;         // 최초 로드 완료 콜백
 function onHwDataChange(){
   if(_hwReadyCount<4) return;          // 최초 로드 전에는 자동 갱신 안 함
   if(_aioSubmitting) return;           // 제출 처리 중에는 건드리지 않음
-  if(document.getElementById('aio-solve')) return; // 문제 풀이 화면이 열려 있으면 방해 안 함
+  if(document.getElementById('aio-qlist')) return; // 문제 풀이 화면이 열려 있으면 방해 안 함
   if(CUR_TAB==='hw' || CUR_TAB==='home'){
     var sid=mySid();
     if(sid) loadMyWrongSubs(renderMain); else renderMain();
@@ -815,10 +816,21 @@ var DAILY_PROBS = [];   // bjm_daily_problems
 var DAILY_SUBS = {};    // bjm_daily_subs {probId:{sid:{answer,correct,at}}}
 var _dailyListenersOn = false;
 
+// 오늘의 문제: 학생이 답을 입력 중인지 확인 (입력 중이면 실시간 갱신으로 화면을 다시 그리지 않음)
+function _dailyInputBusy(){
+  var ae=document.activeElement;
+  if(ae && /^daily-(short|mc)/.test(ae.id||'')) return true;           // 주관식 입력칸에 포커스
+  var inputs=document.querySelectorAll('[id^="daily-short-"]');
+  for(var i=0;i<inputs.length;i++){ if(inputs[i].value && inputs[i].value.trim()) return true; }  // 쓰다 만 답 있음
+  var sid=mySid();
+  for(var pid in _dailyMcPick){                                        // 객관식 골라두고 아직 제출 전
+    if(!(DAILY_SUBS[pid] && sid && DAILY_SUBS[pid][sid])) return true;
+  }
+  return false;
+}
 function loadDaily(cb){
-  if(_dailyListenersOn){ if(cb) cb(); return; }
-  _dailyListenersOn = true;
-  var got=0; function ready(){ got++; if(got>=2 && cb){ cb(); cb=null; } if(got>2){ if(CUR_TAB==='daily' && !document.getElementById('daily-solve-active')) renderMain(); } }
+  if(_dailyListenersOn){ if(cb) cb(); return; }  _dailyListenersOn = true;
+  var got=0; function ready(){ got++; if(got>=2 && cb){ cb(); cb=null; } if(got>2){ if(CUR_TAB==='daily' && !_dailyInputBusy()) renderMain(); } }
   try{
     db.ref('bjm_daily_problems').on('value', function(s){ var v=s.val(); DAILY_PROBS = v? (Array.isArray(v)?v.filter(Boolean):Object.values(v)) : []; ready(); }, function(){ ready(); });
     db.ref('bjm_daily_subs').on('value', function(s){ DAILY_SUBS = s.val()||{}; ready(); }, function(){ ready(); });
@@ -926,6 +938,7 @@ function dailySubmit(pid){
   // 저장: 맞으면 확정 기록, 틀리면 마지막 시도만 기록(재시도 가능)
   var rec={ answer:String(answer), correct:correct, at:new Date().toISOString() };
   db.ref('bjm_daily_subs/'+pid+'/'+sid).set(rec).then(function(){
+    delete _dailyMcPick[pid];
     DAILY_SUBS[pid]=DAILY_SUBS[pid]||{}; DAILY_SUBS[pid][sid]=rec;
     // 해당 문제 영역만 갱신
     var area=document.getElementById('daily-ans-'+pid);

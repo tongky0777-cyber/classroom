@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>김병진수학연구소 클래스</title>
 <link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
 <meta name="theme-color" content="#0a0e13">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -119,11 +120,21 @@ function switchTab(which){
   showMsg('');
 }
 
-// 간단 해시 (비번 평문 저장 방지용 최소 장치)
-function hashPw(pw){
+// (구버전) 간단 해시 — 기존 가입자 마이그레이션 대조용으로만 유지
+function hashPwLegacy(pw){
   var h=0; for(var i=0;i<pw.length;i++){ h=((h<<5)-h)+pw.charCodeAt(i); h|=0; }
   return 'h'+Math.abs(h)+'_'+pw.length;
 }
+// SHA-256 해시 (salt 포함) — 비밀번호 저장·대조용
+var PW_SALT='kbjm.classroom.v1|';
+function hashPw2(pw){
+  var data=new TextEncoder().encode(PW_SALT+pw);
+  return crypto.subtle.digest('SHA-256', data).then(function(buf){
+    return Array.prototype.map.call(new Uint8Array(buf), function(b){ return ('0'+b.toString(16)).slice(-2); }).join('');
+  });
+}
+// 비밀번호 교체 시: 브라우저 콘솔에서 genLoginHash('새비밀번호') 실행 → 출력된 값을 아래 해시 상수에 붙여넣기
+window.genLoginHash=function(pw){ hashPw2(pw).then(function(h){ console.log(h); }); };
 
 function doSignup(){
   var name=document.getElementById('su-name').value.trim();
@@ -162,9 +173,10 @@ function doSignup(){
       showMsg('잠시 후 다시 시도해 주세요','err'); btn.disabled=false; return;
     }
     var uid='u'+Date.now();
-    var user={ uid:uid, name:finalName, baseName:name, grade:grade, pw:hashPw(pw), role:'student', createdAt:new Date().toISOString().slice(0,10) };
+    var user={ uid:uid, name:finalName, baseName:name, grade:grade, pw:'', role:'student', createdAt:new Date().toISOString().slice(0,10) };
 
     var proceed=function(){
+      hashPw2(pw).then(function(h){ user.pw=h;
       db.ref(CP('class_users/')+key).set(user).then(function(){
         localStorage.setItem('class_uid',uid);
         localStorage.setItem('class_name',finalName);
@@ -172,6 +184,7 @@ function doSignup(){
         localStorage.setItem('class_role','student');
         localStorage.setItem('class_last_name',finalName);
         location.href='app.html';
+      });
       });
     };
 
@@ -195,9 +208,10 @@ function doLogin(){
   var btn=document.getElementById('li-btn'); btn.disabled=true;
 
   (window._authReady || Promise.resolve()).then(function(){
+  hashPw2(pw).then(function(ph2){
   db.ref(CP('class_users')).once('value').then(function(snap){
     var all=snap.val()||{};
-    var ph=hashPw(pw);
+    var phOld=hashPwLegacy(pw);
     // 이름(표시이름 또는 원래이름) 일치하는 후보 모두
     var candidates=[];
     Object.keys(all).forEach(function(k){
@@ -206,7 +220,7 @@ function doLogin(){
     });
     if(!candidates.length){ showMsg('가입 정보가 없어요. 이름을 확인하거나 "처음이에요"로 가입해 주세요.','err'); btn.disabled=false; return; }
     // 비번 맞는 후보
-    var hit=candidates.filter(function(c){ return c.u.pw===ph; });
+    var hit=candidates.filter(function(c){ return c.u.pw===ph2 || c.u.pw===phOld; });
     if(!hit.length){ showMsg('비밀번호가 맞지 않습니다','err'); btn.disabled=false; return; }
 
     var pick;
@@ -229,32 +243,40 @@ function doLogin(){
     localStorage.setItem('class_namekey',pick.key);
     localStorage.setItem('class_role',u.role||'student');
     localStorage.setItem('class_last_name',u.name);
+    // 구버전 해시로 로그인한 경우 새 해시로 자동 교체 (다음부터는 새 방식)
+    if(u.pw===phOld && u.pw!==ph2){ try{ db.ref(CP('class_users/')+pick.key+'/pw').set(ph2); }catch(e){} }
     location.href='app.html';
   }).catch(function(e){ showMsg('오류가 발생했습니다','err'); btn.disabled=false; });
   });
+  });
 }
 
-// 관리자(선생님) 로그인 — 아이디/비번 고정
+// 관리자(선생님) 로그인 — 비밀번호는 해시로만 보관 (교체: 콘솔에서 genLoginHash('새비번'))
+var ADMIN_ID='김병진';
+var ADMIN_PW_HASH='f7af75098cf1f9fb16d4627f7cec9b5eb970a90a90812dbe3f03236c9eb9be0d';
+var ASSIST_PW_HASH='0c5032c94a37a7ec85ce6a2d691dbf42d5a14e666ddce14e3e50eb934ea39290';
 function adminLogin(){
   var id=prompt('관리자 아이디');
   if(id===null) return;
   var pw=prompt('관리자 비밀번호');
   if(pw===null) return;
-  if(id==='김병진' && pw==='0708'){
-    localStorage.setItem('class_uid','admin');
-    localStorage.setItem('class_name','김병진');
-    localStorage.setItem('class_namekey','김병진');
-    localStorage.setItem('class_role','admin');
-    location.href='app.html';
-  } else if(id==='조교' && pw==='help1234'){
-    localStorage.setItem('class_uid','assistant');
-    localStorage.setItem('class_name','조교');
-    localStorage.setItem('class_namekey','조교');
-    localStorage.setItem('class_role','assistant');
-    location.href='app.html';
-  } else {
-    showMsg('관리자 정보가 맞지 않습니다','err');
-  }
+  hashPw2(pw).then(function(h){
+    if(id===ADMIN_ID && h===ADMIN_PW_HASH){
+      localStorage.setItem('class_uid','admin');
+      localStorage.setItem('class_name',ADMIN_ID);
+      localStorage.setItem('class_namekey',ADMIN_ID);
+      localStorage.setItem('class_role','admin');
+      location.href='app.html';
+    } else if(id==='조교' && h===ASSIST_PW_HASH){
+      localStorage.setItem('class_uid','assistant');
+      localStorage.setItem('class_name','조교');
+      localStorage.setItem('class_namekey','조교');
+      localStorage.setItem('class_role','assistant');
+      location.href='app.html';
+    } else {
+      showMsg('관리자 정보가 맞지 않습니다','err');
+    }
+  });
 }
 </script>
 </body>
