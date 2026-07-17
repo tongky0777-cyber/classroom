@@ -794,7 +794,8 @@ var AIO_BOOKS={
   'All in one 대수':{ tmKey:'올인원 대수', units:{ unit1_1:'1-1 지수 & 로그', unit1_2:'1-2 지수로그함수', unit2_1:'2-1 삼각함수' } },
   'Only one 공수1':{ tmKey:'온리원', units:{ unit1:'1단원 다항식', unit2_1:'2-1단원 복소수', unit2_2:'2-2단원 이차방정식과 이차함수', unit2_3:'2-3단원 여러 가지 방정식과 부등식' } },
   'All in one 미적분1':{ tmKey:'올인원 미적분', units:{ unit_diff:'미분', unit_integ:'적분' } },
-  'Only one 미적분1':{ tmKey:'온리원 미적분', units:{ unit_diff:'미분', unit_integ:'적분' } }
+  'Only one 미적분1':{ tmKey:'온리원 미적분', units:{ unit_diff:'미분', unit_integ:'적분' } },
+  'Only one 공수2':{ tmKey:'온리원 공수2', units:{ unit_prop:'명제', unit_func:'함수(합성·역함수)', unit_ratirr:'유리함수와 무리함수' } }
 };
 // 전 교재 단원명 통합 (레코드 표시용 — 키 충돌 시 부정확할 수 있어 fallback 전용)
 var AIO_UNIT_NAMES=(function(){ var m={}; for(var b in AIO_BOOKS){ var u=AIO_BOOKS[b].units; for(var k in u) m[k]=u[k]; } return m; })();
