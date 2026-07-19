@@ -259,9 +259,6 @@ function sendPushTest(){
     url:'./app.html',
     tag:'push-test'
   }).then(function(r){
-    if(r && r.failed>0 && r.failures && r.failures.length){
-      alert('Push debug\n' + JSON.stringify(r.failures, null, 2));
-    }
     if(r.sent>0) toast('학생 푸시 테스트 알림을 보냈어요');
     else if(r.subscribed>0) toast('푸시 발송 실패. VAPID 환경변수와 대시보드 재배포를 확인해 주세요');
     else toast('먼저 이 기기에서 알림 켜기를 눌러 주세요');
