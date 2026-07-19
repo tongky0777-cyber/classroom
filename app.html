@@ -191,15 +191,16 @@ var MY_KEY = localStorage.getItem('class_namekey');
 if(!UID){ location.href='index.html'; }
 
 // ===== 텔레그램 알림 (선생님에게) =====
-var TG_TOKEN = "8782124271:AAEZ7cv59orNmh3eDVVXrPG82o4fDgX7Lu8";
-var TG_CHAT_ID = "1916607767";
+var TELEGRAM_NOTIFY_ENDPOINT = "https://kimbjmath-dashboard.vercel.app/api/telegram";
+var CLASSROOM_AUTH_ENDPOINT = "https://kimbjmath-dashboard.vercel.app/api/classroom-auth";
+var CLASSROOM_ADMIN_ENDPOINT = "https://kimbjmath-dashboard.vercel.app/api/classroom-admin";
 function notifyTelegram(text){
   try{
-    var url = "https://api.telegram.org/bot"+TG_TOKEN+"/sendMessage";
-    fetch(url, {
+    if(!TELEGRAM_NOTIFY_ENDPOINT) return;
+    fetch(TELEGRAM_NOTIFY_ENDPOINT, {
       method:"POST",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ chat_id:TG_CHAT_ID, text:text })
+      body: JSON.stringify({ text:text })
     }).catch(function(){});
   }catch(e){}
 }
@@ -209,6 +210,80 @@ var isFullAdmin = (MY_ROLE==='admin');                        // 전체 권한 (
 var isAssistant = (MY_ROLE==='assistant');                    // 조교
 document.getElementById('who-name').textContent = MY_NAME||'';
 document.getElementById('who-role').textContent = isAdmin ? '선생님' : '학생';
+
+function clearClassSession(){
+  ['class_uid','class_name','class_role','class_namekey','class_admin_token'].forEach(function(k){localStorage.removeItem(k);});
+}
+function verifyAdminSession(cb){
+  if(!isAdmin){ cb(); return; }
+  var token=localStorage.getItem('class_admin_token');
+  if(!token){ clearClassSession(); location.href='index.html'; return; }
+  fetch(CLASSROOM_AUTH_ENDPOINT, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'verify', token:token})
+  }).then(function(res){
+    if(!res.ok) throw new Error('verify failed');
+    return res.json();
+  }).then(function(r){
+    if(!r || !r.ok || r.role!==MY_ROLE) throw new Error('verify failed');
+    if(r.name) localStorage.setItem('class_name', r.name);
+    if(r.key) localStorage.setItem('class_namekey', r.key);
+    cb();
+  }).catch(function(){
+    clearClassSession();
+    location.href='index.html';
+  });
+}
+function verifyStudentSession(cb){
+  if(isAdmin){ cb(); return; }
+  if(!MY_KEY || !UID){ clearClassSession(); location.href='index.html'; return; }
+  db.ref(CP('class_users/')+MY_KEY).once('value').then(function(snap){
+    var u=snap.val();
+    if(!u || String(u.uid)!==String(UID) || (u.role && u.role!=='student')){
+      clearClassSession();
+      location.href='index.html';
+      return;
+    }
+    if(u.name && u.name!==MY_NAME){
+      MY_NAME=u.name;
+      localStorage.setItem('class_name', u.name);
+      document.getElementById('who-name').textContent = u.name;
+    }
+    if(cb) cb();
+  }).catch(function(){
+    clearClassSession();
+    location.href='index.html';
+  });
+}
+function requireStudentSession(){
+  if(isAdmin) return false;
+  if(!MY_KEY || !UID){
+    clearClassSession();
+    location.href='index.html';
+    return false;
+  }
+  return true;
+}
+function classroomAdminAction(action, data){
+  var token=localStorage.getItem('class_admin_token');
+  if(!isAdmin || !token){
+    toast('선생님 권한 확인이 필요해요');
+    return Promise.reject(new Error('admin token required'));
+  }
+  var body=Object.assign({action:action, token:token, prefix:CLS_PREFIX}, data||{});
+  return fetch(CLASSROOM_ADMIN_ENDPOINT, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body)
+  }).then(function(res){
+    if(!res.ok) throw new Error('admin action failed');
+    return res.json();
+  }).then(function(r){
+    if(!r || !r.ok) throw new Error((r&&r.error)||'admin action failed');
+    return r;
+  });
+}
 
 // 학생: 내 학년 표시 + 수정 링크
 var MY_GRADE = '';
@@ -226,6 +301,7 @@ if(!isAdmin && MY_KEY){
 var GRADE_OPTIONS = ['초3','초4','초5','초6','중1','중2','중3','고1','고2','고3','기타'];
 function editMyGrade(){
   if(isAdmin) return;
+  if(!requireStudentSession()) return;
   var cur = MY_GRADE || '';
   var msg = '학년을 입력하세요 ('+GRADE_OPTIONS.join(', ')+')';
   var g = prompt(msg, cur);
@@ -268,7 +344,7 @@ function fmtTime(iso){
 
 function doLogout(){
   if(!confirm('로그아웃 할까요?')) return;
-  ['class_uid','class_name','class_role','class_namekey'].forEach(function(k){localStorage.removeItem(k);});
+  clearClassSession();
   location.href='index.html';
 }
 
@@ -433,6 +509,7 @@ function renderClassJoin(){
 
 // 학생: 가입 신청 (반 선택 없이)
 function requestSignup(){
+  if(!requireStudentSession()) return;
   db.ref(CP('class_signups/')+MY_KEY).set({ name:MY_NAME, uid:UID, at:new Date().toISOString() }).then(function(){
     if(!SIGNUPS) SIGNUPS={};
     SIGNUPS[MY_KEY]={ name:MY_NAME, uid:UID };
@@ -758,6 +835,7 @@ function loadMyWrongSubs(cb){
 
 // 내 classKey에 연결된 대시보드 학생 id 찾기
 function mySid(){
+  if(!requireStudentSession()) return null;
   var me = HW_STUDENTS.find(function(st){ return st.classKey===MY_KEY; });
   return me ? me.id : null;
 }
@@ -790,12 +868,12 @@ function isHwCheckedByStudent(hwId, key){
 // ===== [오답수집] 올인원 자동채점 숙제 통합 =====
 var AIO_BOOK_NAME='All in one 공수1';
 var AIO_BOOKS={
-  'All in one 공수1':{ tmKey:'올인원', units:{ unit1:'1단원 다항식', unit2:'2단원 나머지정리·인수분해', unit3:'3단원 방정식', unit4:'2권 (부등식·경우의수·행렬)' } },
-  'All in one 대수':{ tmKey:'올인원 대수', units:{ unit1_1:'1-1 지수 & 로그', unit1_2:'1-2 지수로그함수', unit2_1:'2-1 삼각함수' } },
-  'Only one 공수1':{ tmKey:'온리원', units:{ unit1:'1단원 다항식', unit2_1:'2-1단원 복소수', unit2_2:'2-2단원 이차방정식과 이차함수', unit2_3:'2-3단원 여러 가지 방정식과 부등식' } },
-  'All in one 미적분1':{ tmKey:'올인원 미적분', units:{ unit_diff:'미분', unit_integ:'적분' } },
-  'Only one 미적분1':{ tmKey:'온리원 미적분', units:{ unit_diff:'미분', unit_integ:'적분' } },
-  'Only one 공수2':{ tmKey:'온리원 공수2', units:{ unit_prop:'명제', unit_func:'함수(합성·역함수)', unit_ratirr:'유리함수와 무리함수' } }
+  "All in one 공수1":{ tmKey:"올인원", units:{ unit1:"1단원 다항식", unit2:"2단원 나머지정리·인수분해", unit3:"3단원 방정식", unit_eq:"2권 방정식·일차부등식", unit_ineq:"2권 이차부등식·경우의 수", unit_perm:"2권 순열과 조합·행렬" } },
+  "All in one 대수":{ tmKey:"올인원 대수", units:{ unit1_1:"1-1 지수 & 로그", unit1_2:"1-2 지수로그함수", unit2_1:"2-1 삼각함수" } },
+  "Only one 공수1":{ tmKey:"온리원", units:{ unit1:"1단원 다항식", unit2_1:"2-1단원 복소수", unit2_2:"2-2단원 이차방정식과 이차함수", unit2_3:"2-3단원 여러 가지 방정식과 부등식" } },
+  "All in one 미적분1":{ tmKey:"올인원 미적분", units:{ unit_limit:"극한과 연속", unit_diff:"미분계수와 도함수", unit_diffapp:"미분법의 활용(1)" } },
+  "Only one 미적분1":{ tmKey:"온리원 미적분", units:{ unit_diff:"2권 도함수의 활용", unit_integ:"2권 적분" } },
+  "Only one 공수2":{ tmKey:"온리원 공수2", units:{ unit_prop:"2권 명제", unit_func:"2권 함수(합성·역함수)", unit_ratirr:"2권 유리함수와 무리함수" } }
 };
 // 전 교재 단원명 통합 (레코드 표시용 — 키 충돌 시 부정확할 수 있어 fallback 전용)
 var AIO_UNIT_NAMES=(function(){ var m={}; for(var b in AIO_BOOKS){ var u=AIO_BOOKS[b].units; for(var k in u) m[k]=u[k]; } return m; })();
@@ -922,6 +1000,7 @@ function dailyPickMc(pid, v){
 }
 
 function dailySubmit(pid){
+  if(!requireStudentSession()) return;
   var sid=mySid();
   if(!sid){ alert('학생 정보를 찾을 수 없어요. 선생님께 클래스룸 연결을 요청해주세요.'); return; }
   var prob=DAILY_PROBS.find(function(p){ return p.id===pid; });
@@ -1287,6 +1366,7 @@ function updateAioProg(){
 var _aioSubmitting=false;
 function submitAio(){
   if(_aioSubmitting) return;
+  if(!requireStudentSession()) return;
   var ctx=_aioCtx; if(!ctx) return;
   var hw=ctx.hw;
   var r=Grader.gradeHomework(_aioAK, hw.unitKey, hw.qStart, hw.qEnd, ctx.inputs);
@@ -1347,6 +1427,7 @@ function showAioResult(r){
 }
 
 function toggleHwDone(hwId, done){
+  if(!requireStudentSession()) return;
   var ref = db.ref(CP('class_hw_done/')+hwId+'/'+MY_KEY);
   if(done){
     var rec = { done:true, at:new Date().toISOString(), name:MY_NAME };
@@ -1368,17 +1449,28 @@ function toggleHwDone(hwId, done){
 }
 
 // 학생 체크 → 대시보드 숙제(bjm_homework) status 반영
-// bjm_homework는 배열이라 전체를 읽어 해당 항목만 고쳐 다시 씀
+// bjm_homework는 배열/객체 형태를 보존하면서 충돌 시 다시 계산되도록 transaction 사용
 function syncHwStatusToDashboard(hwId, status){
   try{
-    db.ref('bjm_homework').once('value').then(function(s){
-      var v=s.val(); if(!v) return;
-      var arr = Array.isArray(v) ? v : Object.values(v);
-      var changed=false;
-      for(var i=0;i<arr.length;i++){
-        if(arr[i] && arr[i].id===hwId){ arr[i].status=status; changed=true; break; }
+    db.ref('bjm_homework').transaction(function(v){
+      if(!v) return v;
+      if(Array.isArray(v)){
+        for(var i=0;i<v.length;i++){
+          if(v[i] && String(v[i].id)===String(hwId)){
+            v[i].status=status;
+            break;
+          }
+        }
+      } else {
+        Object.keys(v).some(function(k){
+          if(v[k] && String(v[k].id)===String(hwId)){
+            v[k].status=status;
+            return true;
+          }
+          return false;
+        });
       }
-      if(changed){ db.ref('bjm_homework').set(arr); }
+      return v;
     });
   }catch(e){}
 }
@@ -1634,6 +1726,7 @@ function renderCheerSummary(date, myKey){
 
 // 응원 보내기/취소 (같은 학생에 한 종류, 다시 누르면 취소)
 function sendCheer(date, targetKey, cheerKey){
+  if(!requireStudentSession()) return;
   if(targetKey===MY_KEY) return;
   var path = CP('class_cheer/')+date+'/'+targetKey+'/'+MY_KEY;
   var cur = (CHEERS[date] && CHEERS[date][targetKey] && CHEERS[date][targetKey][MY_KEY]) || null;
@@ -1695,6 +1788,7 @@ function closeReactionPicker(){
 }
 
 function toggleReaction(reactionId, emojiKey){
+  if(!isAdmin && !requireStudentSession()) return;
   var path = CP('class_reactions/')+reactionId+'/'+MY_KEY;
   var cur = (REACTIONS[reactionId]||{})[MY_KEY] || null;
   if(!REACTIONS[reactionId]) REACTIONS[reactionId]={};
@@ -1893,6 +1987,7 @@ function renderPlannerPreview(){
 function removePlannerImg(i){ plannerImgs.splice(i,1); renderPlannerPreview(); }
 
 function submitPlanner(){
+  if(!requireStudentSession()) return;
   // 입력칸에 남아있는 항목도 자동 포함
   var subj=(document.getElementById('pl-subject').value||'').trim();
   var amt=(document.getElementById('pl-amount').value||'').trim();
@@ -2041,6 +2136,7 @@ function removeImg(i){ uploadImgs.splice(i,1); renderPreview(); }
 function removeFile(){ uploadFile=null; renderPreview(); }
 
 function submitPost(type){
+  if(!isAdmin && !requireStudentSession()) return;
   var text=(document.getElementById('comp-text')||{}).value||'';
   text=text.trim();
   if(!text && uploadImgs.length===0 && !uploadFile){ toast('내용이나 사진을 입력해 주세요'); return; }
@@ -2049,9 +2145,12 @@ function submitPost(type){
   var post={ uid:UID, author:MY_NAME, role:MY_ROLE, type:type, text:text, createdAt:new Date().toISOString() };
   if(uploadImgs.length) post.imgs=uploadImgs.slice();
   if(uploadFile) post.file={ name:uploadFile.name, url:uploadFile.url };
-  db.ref(CP('class_posts/')+CURRENT_CLASS+'/'+id).set(post).then(function(){
+  var savePost = isAdmin
+    ? classroomAdminAction('createPost', {cid:CURRENT_CLASS, post:post})
+    : db.ref(CP('class_posts/')+CURRENT_CLASS+'/'+id).set(post);
+  savePost.then(function(){
     // 학생이 질문을 올리면 선생님 텔레그램으로 알림
-    if(type==='qna' && MY_ROLE!=='admin'){
+    if(type==='qna' && !isAdmin){
       var className = (CLASSES[CURRENT_CLASS] && CLASSES[CURRENT_CLASS].name) ? CLASSES[CURRENT_CLASS].name : '';
       var preview = text ? (text.length>60 ? text.slice(0,60)+'…' : text) : '(사진 질문)';
       notifyTelegram('❓ 새 질문\n['+className+'] '+MY_NAME+' 학생\n\n'+preview);
@@ -2065,7 +2164,13 @@ function submitPost(type){
 
 function deletePost(pid){
   if(!confirm('삭제할까요?')) return;
-  db.ref(CP('class_posts/')+CURRENT_CLASS+'/'+pid).remove().then(function(){ toast('삭제했어요'); loadPosts(); });
+  var p=POSTS[pid];
+  if(!isAdmin && (!p || p.uid!==UID || !requireStudentSession())){ toast('삭제할 수 없어요'); return; }
+  var removePost = isAdmin
+    ? classroomAdminAction('deletePost', {cid:CURRENT_CLASS, pid:pid})
+    : db.ref(CP('class_posts/')+CURRENT_CLASS+'/'+pid).remove();
+  removePost.then(function(){ toast('삭제했어요'); loadPosts(); })
+    .catch(function(){ toast('삭제 실패. 다시 시도해 주세요'); });
 }
 
 // 글 수정 (내용 텍스트)
@@ -2086,7 +2191,11 @@ function saveEditPost(pid){
   // 사진/파일 없는 글인데 내용까지 비우면 막기
   var hasMedia = (p.imgs && p.imgs.length) || (p.file && (p.file.url || p.file.data));
   if(!text && !hasMedia){ toast('내용을 입력해 주세요'); return; }
-  db.ref(CP('class_posts/')+CURRENT_CLASS+'/'+pid+'/text').set(text).then(function(){
+  if(!isAdmin && (!p || p.uid!==UID || !requireStudentSession())){ toast('수정할 수 없어요'); return; }
+  var saveText = isAdmin
+    ? classroomAdminAction('editPostText', {cid:CURRENT_CLASS, pid:pid, text:text})
+    : db.ref(CP('class_posts/')+CURRENT_CLASS+'/'+pid+'/text').set(text);
+  saveText.then(function(){
     if(POSTS[pid]) POSTS[pid].text=text;
     closeModal();
     toast('수정했어요');
@@ -2171,6 +2280,7 @@ function renderAnsPreview(){
 }
 function rmAnsImg(i){ _answerImgs.splice(i,1); renderAnsPreview(); }
 function saveAnswer(pid){
+  if(!isAdmin){ toast('답변은 선생님만 저장할 수 있어요'); return; }
   var text=(document.getElementById('ans-text').value||'').trim();
   var linkRaw=(document.getElementById('ans-link')||{}).value||'';
   var linkUrl='';
@@ -2182,9 +2292,9 @@ function saveAnswer(pid){
   var ans={ text:text, by:MY_NAME, at:new Date().toISOString() };
   if(_answerImgs.length) ans.imgs=_answerImgs.slice();
   if(linkUrl) ans.file={ name:(_answerLink&&_answerLink.url===linkUrl&&_answerLink.name)||'첨부 자료', url:linkUrl };
-  db.ref(CP('class_posts/')+CURRENT_CLASS+'/'+pid+'/answer').set(ans).then(function(){
+  classroomAdminAction('saveAnswer', {cid:CURRENT_CLASS, pid:pid, answer:ans}).then(function(){
     closeModal(); toast('답변을 저장했어요'); loadPosts();
-  });
+  }).catch(function(){ toast('답변 저장 실패. 다시 시도해 주세요'); });
 }
 
 // ===== 관리자: 반 만들기 =====
@@ -2202,11 +2312,10 @@ function createClass(){
   if(!isFullAdmin){ toast('반 관리는 선생님만 할 수 있어요'); return; }
   var name=(document.getElementById('nc-name').value||'').trim();
   if(!name){ toast('반 이름을 입력해 주세요'); return; }
-  var cid='c'+Date.now();
-  db.ref(CP('class_classes/')+cid).set({ name:name, createdAt:new Date().toISOString(), members:{} }).then(function(){
+  classroomAdminAction('createClass', {name:name}).then(function(r){
     closeModal(); toast('반을 만들었어요');
-    loadAll(function(){ CURRENT_CLASS=cid; CUR_TAB='manage'; renderClassBar(); renderMain(); });
-  });
+    loadAll(function(){ CURRENT_CLASS=r.cid; CUR_TAB='manage'; renderClassBar(); renderMain(); });
+  }).catch(function(){ toast('반 만들기에 실패했어요. 다시 시도해 주세요'); });
 }
 
 // ===== 관리자: 반 관리 (학생 추가/제거) =====
@@ -2300,30 +2409,28 @@ function renderManage(){
 function assignToClass(key, cid){
   if(!isFullAdmin){ toast('반 배정은 선생님만 할 수 있어요'); return; }
   var s=(SIGNUPS||{})[key]; if(!s) return;
-  db.ref(CP('class_classes/')+cid+'/members/'+key).set({ name:s.name, uid:s.uid }).then(function(){
-    return db.ref(CP('class_signups/')+key).remove();   // 배정 완료 → 신청 대기에서 제거
-  }).then(function(){
+  classroomAdminAction('assignToClass', {key:key, cid:cid}).then(function(){
     if(SIGNUPS) delete SIGNUPS[key];
     toast(s.name+' 학생을 '+CLASSES[cid].name+'에 넣었어요');
     loadAll(function(){ renderManage(); });
-  });
+  }).catch(function(){ toast('반 배정에 실패했어요. 다시 시도해 주세요'); });
 }
 // 가입 신청 삭제 (배정 끝났거나 거절)
 function rejectSignup(key){
   if(!confirm('이 가입 신청을 목록에서 지울까요?\n(이미 반에 넣었다면 반에서 빠지지 않아요)')) return;
-  db.ref(CP('class_signups/')+key).remove().then(function(){
+  classroomAdminAction('rejectSignup', {key:key}).then(function(){
     if(SIGNUPS) delete SIGNUPS[key];
     toast('신청 목록에서 지웠어요');
     loadAll(function(){ renderManage(); });
-  });
+  }).catch(function(){ toast('신청 삭제에 실패했어요. 다시 시도해 주세요'); });
 }
 function removeMember(key){
   if(!isFullAdmin){ toast('반 구성 변경은 선생님만 할 수 있어요'); return; }
   if(!confirm('이 학생을 반에서 빼시겠어요?')) return;
-  db.ref(CP('class_classes/')+CURRENT_CLASS+'/members/'+key).remove().then(function(){
+  classroomAdminAction('removeMember', {cid:CURRENT_CLASS, key:key}).then(function(){
     toast('빼냈어요');
     loadAll(function(){ renderManage(); });
-  });
+  }).catch(function(){ toast('학생 빼기에 실패했어요. 다시 시도해 주세요'); });
 }
 // 이동 대상 선택 영역 펼치기/접기
 function openMoveMember(key){
@@ -2342,11 +2449,7 @@ function moveMember(key, toCid){
   var info=(CLASSES[fromCid] && CLASSES[fromCid].members && CLASSES[fromCid].members[key]) ? CLASSES[fromCid].members[key] : {name:key};
   var toName=(CLASSES[toCid]&&CLASSES[toCid].name)||'';
   if(!confirm(esc(info.name||key)+' 학생을 "'+toName+'"(으)로 옮길까요?')) return;
-  // 새 반에 추가
-  db.ref(CP('class_classes/')+toCid+'/members/'+key).set({ name:info.name||key, uid:info.uid||null }).then(function(){
-    // 현재 반에서 제거
-    return db.ref(CP('class_classes/')+fromCid+'/members/'+key).remove();
-  }).then(function(){
+  classroomAdminAction('moveMember', {fromCid:fromCid, toCid:toCid, key:key}).then(function(){
     toast((info.name||key)+' 학생을 '+toName+'으로 옮겼어요');
     loadAll(function(){ renderManage(); });
   }).catch(function(){ toast('이동에 실패했어요. 다시 시도해 주세요'); });
@@ -2355,7 +2458,7 @@ function toggleClassPlannerShare(){
   if(!isFullAdmin){ toast('선생님만 변경할 수 있어요'); return; }
   var cid=CURRENT_CLASS; var c=CLASSES[cid]; if(!c) return;
   var next = !c.plannerShare;
-  db.ref(CP('class_classes/')+cid+'/plannerShare').set(next).then(function(){
+  classroomAdminAction('setPlannerShare', {cid:cid, value:next}).then(function(){
     if(CLASSES[cid]) CLASSES[cid].plannerShare=next;
     toast(next?'플래너 공유를 켰어요':'플래너 공유를 껐어요');
     renderManage();
@@ -2370,7 +2473,7 @@ function renameClass(){
   if(name===null) return;
   name=name.trim();
   if(!name){ toast('반 이름을 입력해 주세요'); return; }
-  db.ref(CP('class_classes/')+cid+'/name').set(name).then(function(){
+  classroomAdminAction('renameClass', {cid:cid, name:name}).then(function(){
     if(CLASSES[cid]) CLASSES[cid].name=name;
     toast('반 이름을 바꿨어요');
     renderClassBar(); renderManage();
@@ -2381,11 +2484,10 @@ function deleteClass(){
   if(!isFullAdmin){ toast('반 삭제는 선생님만 할 수 있어요'); return; }
   if(!confirm('이 반을 삭제할까요? 올라온 자료·질문도 함께 사라져요.')) return;
   var cid=CURRENT_CLASS;
-  db.ref(CP('class_classes/')+cid).remove();
-  db.ref(CP('class_posts/')+cid).remove().then(function(){
+  classroomAdminAction('deleteClass', {cid:cid}).then(function(){
     toast('반을 삭제했어요'); CURRENT_CLASS=null; CUR_TAB='feed';
     loadAll(function(){ renderClassBar(); renderMain(); });
-  });
+  }).catch(function(){ toast('반 삭제에 실패했어요. 다시 시도해 주세요'); });
 }
 
 // ===== 시험 D-day =====
@@ -2444,6 +2546,7 @@ function openExamSetup(){
   openModal(h);
 }
 function saveExamDate(){
+  if(isAdmin || !requireStudentSession()) return;
   var d=document.getElementById('exam-date').value;
   var nm=(document.getElementById('exam-name').value||'').trim();
   if(!d){ toast('시험 첫날을 선택해 주세요'); return; }
@@ -2452,6 +2555,7 @@ function saveExamDate(){
   }).catch(function(){ toast('저장 실패. 다시 시도해 주세요'); });
 }
 function clearExamDate(){
+  if(isAdmin || !requireStudentSession()) return;
   db.ref(CP('class_users/')+MY_KEY).update({ examDate:null, examName:null }).then(function(){
     MY_EXAM=null; MY_EXAM_NAME=''; closeModal(); renderDdayBar(); toast('시험일을 삭제했어요');
   });
@@ -2460,17 +2564,21 @@ function clearExamDate(){
 // ===== 시작 =====
 // 익명 로그인이 끝난 뒤 데이터를 읽어야 보안 규칙에 막히지 않는다.
 (window._authReady || Promise.resolve()).then(function(){
-loadAll(function(){
-  var list=myClasses();
-  // 학생은 첫 반 자동 진입, 관리자는 반 선택 화면을 먼저 보도록 자동선택 안 함
-  if(!isAdmin && list.length){ CURRENT_CLASS=list[0].id; }
-  renderClassBar();
-  if(CURRENT_CLASS){
-    loadPosts();
-    if(!isAdmin){ loadHomework(renderMain); }  // 홈 통계용 숙제 데이터 미리 로드
-  } else { renderMain(); }
-  startClassesLive();
-  loadExamDate();
+verifyAdminSession(function(){
+verifyStudentSession(function(){
+  loadAll(function(){
+    var list=myClasses();
+    // 학생은 첫 반 자동 진입, 관리자는 반 선택 화면을 먼저 보도록 자동선택 안 함
+    if(!isAdmin && list.length){ CURRENT_CLASS=list[0].id; }
+    renderClassBar();
+    if(CURRENT_CLASS){
+      loadPosts();
+      if(!isAdmin){ loadHomework(renderMain); }  // 홈 통계용 숙제 데이터 미리 로드
+    } else { renderMain(); }
+    startClassesLive();
+    loadExamDate();
+  });
+});
 });
 });
 </script>

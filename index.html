@@ -99,6 +99,7 @@ window._authReady = (firebase.auth ? firebase.auth().signInAnonymously()
 // 클래스룸 데이터 접두사 (김병진=빈값, 선생님별 클래스룸은 sgh_ 등)
 var CLS_PREFIX = "";
 function CP(path){ return CLS_PREFIX + path; }
+var CLASSROOM_AUTH_ENDPOINT = "https://kimbjmath-dashboard.vercel.app/api/classroom-auth";
 
 // 자동 로그인
 if(localStorage.getItem('class_uid')){ location.href='app.html'; }
@@ -251,31 +252,29 @@ function doLogin(){
   });
 }
 
-// 관리자(선생님) 로그인 — 비밀번호는 해시로만 보관 (교체: 콘솔에서 genLoginHash('새비번'))
-var ADMIN_ID='김병진';
-var ADMIN_PW_HASH='f7af75098cf1f9fb16d4627f7cec9b5eb970a90a90812dbe3f03236c9eb9be0d';
-var ASSIST_PW_HASH='0c5032c94a37a7ec85ce6a2d691dbf42d5a14e666ddce14e3e50eb934ea39290';
+// 관리자(선생님) 로그인 — 비밀번호 확인은 대시보드 API에서 처리
 function adminLogin(){
   var id=prompt('관리자 아이디');
   if(id===null) return;
   var pw=prompt('관리자 비밀번호');
   if(pw===null) return;
-  hashPw2(pw).then(function(h){
-    if(id===ADMIN_ID && h===ADMIN_PW_HASH){
-      localStorage.setItem('class_uid','admin');
-      localStorage.setItem('class_name',ADMIN_ID);
-      localStorage.setItem('class_namekey',ADMIN_ID);
-      localStorage.setItem('class_role','admin');
-      location.href='app.html';
-    } else if(id==='조교' && h===ASSIST_PW_HASH){
-      localStorage.setItem('class_uid','assistant');
-      localStorage.setItem('class_name','조교');
-      localStorage.setItem('class_namekey','조교');
-      localStorage.setItem('class_role','assistant');
-      location.href='app.html';
-    } else {
-      showMsg('관리자 정보가 맞지 않습니다','err');
-    }
+  fetch(CLASSROOM_AUTH_ENDPOINT, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({action:'login', id:id, pw:pw})
+  }).then(function(res){
+    if(!res.ok) throw new Error('login failed');
+    return res.json();
+  }).then(function(r){
+    if(!r || !r.ok || !r.token) throw new Error('login failed');
+    localStorage.setItem('class_uid', r.uid || r.role);
+    localStorage.setItem('class_name', r.name || id);
+    localStorage.setItem('class_namekey', r.key || r.name || id);
+    localStorage.setItem('class_role', r.role);
+    localStorage.setItem('class_admin_token', r.token);
+    location.href='app.html';
+  }).catch(function(){
+    showMsg('관리자 정보가 맞지 않습니다','err');
   });
 }
 </script>
