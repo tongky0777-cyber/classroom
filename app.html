@@ -194,6 +194,7 @@ if(!UID){ location.href='index.html'; }
 var TELEGRAM_NOTIFY_ENDPOINT = "https://kimbjmath-dashboard.vercel.app/api/telegram";
 var CLASSROOM_AUTH_ENDPOINT = "https://kimbjmath-dashboard.vercel.app/api/classroom-auth";
 var CLASSROOM_ADMIN_ENDPOINT = "https://kimbjmath-dashboard.vercel.app/api/classroom-admin";
+var CLASSROOM_PUSH_ENDPOINT = "https://kimbjmath-dashboard.vercel.app/api/classroom-push";
 function notifyTelegram(text, bubbleError){
   try{
     if(!TELEGRAM_NOTIFY_ENDPOINT) return Promise.resolve({ok:false});
@@ -228,6 +229,65 @@ function sendTelegramTest(){
   }).then(function(){
     if(btn) btn.disabled=false;
   });
+}
+
+function classroomPushAction(action, data){
+  var token=localStorage.getItem('class_admin_token');
+  if(!isAdmin || !token) return Promise.reject(new Error('staff token required'));
+  var body=Object.assign({action:action, token:token, prefix:CLS_PREFIX}, data||{});
+  return fetch(CLASSROOM_PUSH_ENDPOINT, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(body)
+  }).then(function(res){
+    if(!res.ok) throw new Error('push failed');
+    return res.json();
+  }).then(function(r){
+    if(!r || !r.ok) throw new Error((r&&r.error)||'push failed');
+    return r;
+  });
+}
+
+function sendPushTest(){
+  if(!isAdmin){ toast('선생님/조교만 테스트할 수 있어요'); return; }
+  var btn=document.getElementById('push-test-btn');
+  if(btn) btn.disabled=true;
+  classroomPushAction('sendTest', {
+    title:'김병진T 알림 테스트',
+    body:MY_NAME+' 계정으로 보낸 학생 푸시 테스트입니다.',
+    url:'./app.html',
+    tag:'push-test'
+  }).then(function(r){
+    if(r.sent>0) toast('학생 푸시 테스트 알림을 보냈어요');
+    else toast('먼저 이 기기에서 알림 켜기를 눌러 주세요');
+  }).catch(function(){
+    toast('학생 푸시 실패. VAPID 설정과 재배포를 확인해 주세요');
+  }).then(function(){
+    if(btn) btn.disabled=false;
+  });
+}
+
+function sendClassPush(cid, title, body, tag){
+  if(!isAdmin || !cid) return Promise.resolve(null);
+  return classroomPushAction('sendToClass', {
+    cid:cid,
+    title:title,
+    body:body,
+    url:'./app.html',
+    tag:tag || ('class-'+cid)
+  }).catch(function(){ return null; });
+}
+
+function sendPostOwnerPush(cid, pid, title, body, tag){
+  if(!isAdmin || !cid || !pid) return Promise.resolve(null);
+  return classroomPushAction('sendPostOwner', {
+    cid:cid,
+    pid:pid,
+    title:title,
+    body:body,
+    url:'./app.html',
+    tag:tag || ('post-'+pid)
+  }).catch(function(){ return null; });
 }
 
 var isAdmin = (MY_ROLE==='admin' || MY_ROLE==='assistant');  // 관리자 화면 접근 (선생님+조교)
@@ -584,7 +644,10 @@ var _classColors=[
 function renderAdminClassPicker(){
   var list = myClasses();
   var html = '<div style="font-size:15px;font-weight:500;margin:4px 2px 16px;color:var(--ink);">반을 선택하세요</div>';
-  html += '<button id="telegram-test-btn" class="icon-btn" style="width:100%;margin:-4px 0 14px;padding:12px;font-weight:700;" onclick="sendTelegramTest()">텔레그램 알림 테스트</button>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:-4px 0 14px;">'
+    +'<button id="telegram-test-btn" class="icon-btn" style="padding:12px;font-weight:700;" onclick="sendTelegramTest()">텔레그램 테스트</button>'
+    +'<button id="push-test-btn" class="icon-btn" style="padding:12px;font-weight:700;" onclick="sendPushTest()">학생 푸시 테스트</button>'
+    +'</div>';
   if(!list.length){
     html += '<div class="empty">아직 만든 반이 없어요.<br>위 <b>+ 반 만들기</b>를 누르세요.</div>';
     document.getElementById('main').innerHTML = html;
@@ -2168,7 +2231,7 @@ function submitPost(type){
   if(!text && uploadImgs.length===0 && !uploadFile){ toast('내용이나 사진을 입력해 주세요'); return; }
   var btn=document.getElementById('send-btn'); if(btn) btn.disabled=true;
   var id='p'+Date.now();
-  var post={ uid:UID, author:MY_NAME, role:MY_ROLE, type:type, text:text, createdAt:new Date().toISOString() };
+  var post={ uid:UID, key:MY_KEY, author:MY_NAME, role:MY_ROLE, type:type, text:text, createdAt:new Date().toISOString() };
   if(uploadImgs.length) post.imgs=uploadImgs.slice();
   if(uploadFile) post.file={ name:uploadFile.name, url:uploadFile.url };
   var savePost = isAdmin
@@ -2180,6 +2243,11 @@ function submitPost(type){
       var className = (CLASSES[CURRENT_CLASS] && CLASSES[CURRENT_CLASS].name) ? CLASSES[CURRENT_CLASS].name : '';
       var preview = text ? (text.length>60 ? text.slice(0,60)+'…' : text) : '(사진 질문)';
       notifyTelegram('❓ 새 질문\n['+className+'] '+MY_NAME+' 학생\n\n'+preview);
+    }
+    if(isAdmin && type==='feed'){
+      var cName = (CLASSES[CURRENT_CLASS] && CLASSES[CURRENT_CLASS].name) ? CLASSES[CURRENT_CLASS].name : '클래스룸';
+      var msg = text ? (text.length>80 ? text.slice(0,80)+'…' : text) : (uploadFile ? uploadFile.name : '새 자료가 올라왔어요');
+      sendClassPush(CURRENT_CLASS, '새 공지/자료', '['+cName+'] '+msg, 'feed-'+CURRENT_CLASS);
     }
     uploadImgs=[]; uploadFile=null;
     var ta=document.getElementById('comp-text'); if(ta) ta.value='';
@@ -2319,6 +2387,7 @@ function saveAnswer(pid){
   if(_answerImgs.length) ans.imgs=_answerImgs.slice();
   if(linkUrl) ans.file={ name:(_answerLink&&_answerLink.url===linkUrl&&_answerLink.name)||'첨부 자료', url:linkUrl };
   classroomAdminAction('saveAnswer', {cid:CURRENT_CLASS, pid:pid, answer:ans}).then(function(){
+    sendPostOwnerPush(CURRENT_CLASS, pid, '질문 답변이 도착했어요', '선생님 답변을 확인해 주세요.', 'answer-'+pid);
     closeModal(); toast('답변을 저장했어요'); loadPosts();
   }).catch(function(){ toast('답변 저장 실패. 다시 시도해 주세요'); });
 }
@@ -2616,7 +2685,7 @@ verifyStudentSession(function(){
  */
 
 // VAPID 공개키 — 2단계에서 생성해 여기에 넣는다 (현재는 비어 있음)
-var VAPID_PUBLIC_KEY = "BP9ByVYsXmkrU91jJNgbahc2N2ibuQlqVpd4iqi3syvV7FYHRi2pMPdQbULPnKc1OW5MWnPbYeoIbun4RrEws4g";
+var VAPID_PUBLIC_KEY = "BPE7ba752gziPWYhyiSNQeXLKdzI1aPdO4e28bcdTliKXzu5ZD6MfBmz9t_6j5texTdb5_9xjEFHOM3ZyLpBa6A";
 
 // base64 → Uint8Array (푸시 구독에 필요한 형식 변환)
 function _urlBase64ToUint8Array(base64String){
