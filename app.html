@@ -194,15 +194,40 @@ if(!UID){ location.href='index.html'; }
 var TELEGRAM_NOTIFY_ENDPOINT = "https://kimbjmath-dashboard.vercel.app/api/telegram";
 var CLASSROOM_AUTH_ENDPOINT = "https://kimbjmath-dashboard.vercel.app/api/classroom-auth";
 var CLASSROOM_ADMIN_ENDPOINT = "https://kimbjmath-dashboard.vercel.app/api/classroom-admin";
-function notifyTelegram(text){
+function notifyTelegram(text, bubbleError){
   try{
-    if(!TELEGRAM_NOTIFY_ENDPOINT) return;
-    fetch(TELEGRAM_NOTIFY_ENDPOINT, {
+    if(!TELEGRAM_NOTIFY_ENDPOINT) return Promise.resolve({ok:false});
+    return fetch(TELEGRAM_NOTIFY_ENDPOINT, {
       method:"POST",
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({ text:text })
-    }).catch(function(){});
-  }catch(e){}
+    }).then(function(res){
+      if(!res.ok) throw new Error('telegram failed');
+      return res.json().catch(function(){ return {ok:true}; });
+    }).catch(function(err){
+      if(bubbleError) throw err;
+      return {ok:false};
+    });
+  }catch(e){
+    if(bubbleError) return Promise.reject(e);
+    return Promise.resolve({ok:false});
+  }
+}
+
+function sendTelegramTest(){
+  if(!isAdmin){ toast('선생님/조교만 테스트할 수 있어요'); return; }
+  var btn=document.getElementById('telegram-test-btn');
+  if(btn) btn.disabled=true;
+  var role = isFullAdmin ? '선생님' : '조교';
+  var cls = CURRENT_CLASS && CLASSES[CURRENT_CLASS] ? '\n반: '+CLASSES[CURRENT_CLASS].name : '';
+  var msg = '🔔 텔레그램 알림 테스트\n'+MY_NAME+' '+role+' 계정에서 보낸 테스트입니다.'+cls+'\n'+new Date().toLocaleString();
+  notifyTelegram(msg, true).then(function(){
+    toast('텔레그램 테스트 알림을 보냈어요');
+  }).catch(function(){
+    toast('텔레그램 알림 실패. 환경변수와 재배포를 확인해 주세요');
+  }).then(function(){
+    if(btn) btn.disabled=false;
+  });
 }
 
 var isAdmin = (MY_ROLE==='admin' || MY_ROLE==='assistant');  // 관리자 화면 접근 (선생님+조교)
@@ -559,6 +584,7 @@ var _classColors=[
 function renderAdminClassPicker(){
   var list = myClasses();
   var html = '<div style="font-size:15px;font-weight:500;margin:4px 2px 16px;color:var(--ink);">반을 선택하세요</div>';
+  html += '<button id="telegram-test-btn" class="icon-btn" style="width:100%;margin:-4px 0 14px;padding:12px;font-weight:700;" onclick="sendTelegramTest()">텔레그램 알림 테스트</button>';
   if(!list.length){
     html += '<div class="empty">아직 만든 반이 없어요.<br>위 <b>+ 반 만들기</b>를 누르세요.</div>';
     document.getElementById('main').innerHTML = html;
