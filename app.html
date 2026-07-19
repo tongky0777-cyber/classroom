@@ -252,7 +252,8 @@ function sendPushTest(){
   if(!isAdmin){ toast('선생님/조교만 테스트할 수 있어요'); return; }
   var btn=document.getElementById('push-test-btn');
   if(btn) btn.disabled=true;
-  classroomPushAction('sendTest', {
+  classroomPushAction('sendToKeys', {
+    keys:[MY_KEY],
     title:'김병진T 알림 테스트',
     body:MY_NAME+' 계정으로 보낸 학생 푸시 테스트입니다.',
     url:'./app.html',
