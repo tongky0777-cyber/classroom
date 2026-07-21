@@ -1216,6 +1216,8 @@ function renderHome(){
 }
 
 function renderHwStudent(){
+  // 해설 목록은 한 번만 불러오고, 준비되면 다시 그린다
+  if(!_solIndex){ loadSolutionIndex().then(function(){ renderHwStudent(); }); }
   var main=document.getElementById('main');
   var sid = mySid();
   if(!sid){
@@ -1283,6 +1285,7 @@ function renderHwStudent(){
           +toggleBtn
           +reviseBtn
           +detailHtml
+          +solutionChipsHtml(h)
           +'</div>';
       } else {
         html += '<div style="background:var(--surface);border:1.5px solid '+(overdue?'var(--red)':'var(--gold)')+';border-radius:14px;padding:14px;margin-bottom:10px;">'
@@ -1340,6 +1343,53 @@ function toggleWrongDetail(hwId, btn){
 // ===== 올인원 자동채점 풀이 화면 (앱 내) =====
 var _aioCtx=null;  // { hw, sid, inputs }
 var AIO_MAX_SUBMITS=2;   // 최초 제출 1회 + 수정 1회
+
+// ===== 해설 이미지 (제출 후에만 열람) =====
+// 나중에 Firebase Storage로 옮길 땐 이 주소 한 줄만 바꾸면 된다.
+var SOLUTION_BASE='./data/해설/';
+var _solIndex=null, _solLoading=null;
+function loadSolutionIndex(){
+  if(_solIndex) return Promise.resolve(_solIndex);
+  if(_solLoading) return _solLoading;
+  _solLoading=fetch(SOLUTION_BASE+'index.json')
+    .then(function(r){ return r.ok?r.json():{}; })
+    .catch(function(){ return {}; })
+    .then(function(j){ _solIndex=j||{}; return _solIndex; });
+  return _solLoading;
+}
+// 해설이 있는 번호 목록 (제출 범위 안에서만)
+function _solNumsFor(hw){
+  if(!_solIndex) return [];
+  var b=_solIndex[_aioTmKeyOf(hw)]; if(!b||!b.units) return [];
+  var list=b.units[hw.unitKey]||[];
+  return list.filter(function(n){ return n>=hw.qStart && n<=hw.qEnd; })
+             .sort(function(a,b){ return a-b; });
+}
+function _solUrl(hw, no){
+  var b=_solIndex&&_solIndex[_aioTmKeyOf(hw)]; if(!b) return '';
+  return SOLUTION_BASE+encodeURIComponent(b.dir)+'/'+encodeURIComponent(hw.unitKey)+'/'+String(no).padStart(3,'0')+'.jpg';
+}
+function openSolution(hwId, no){
+  var hw=HW_LIST.find(function(x){ return x.id===hwId; });
+  if(!hw){ toast('숙제 정보를 찾을 수 없어요'); return; }
+  var sub=WRONG_SUBS[hwId];
+  if(!(sub&&sub.submittedFull)){ toast('제출한 뒤에 해설을 볼 수 있어요'); return; }
+  var url=_solUrl(hw,no);
+  if(!url){ toast('해설을 찾을 수 없어요'); return; }
+  openPhoto(url);
+}
+// 제출 완료 카드/결과 화면에 붙일 '해설 보기' 칩 묶음
+function solutionChipsHtml(hw){
+  var nums=_solNumsFor(hw);
+  if(!nums.length) return '';
+  return '<div style="margin-top:12px;padding-top:11px;border-top:1px solid var(--line);">'
+    +'<div style="font-size:11px;color:var(--muted);margin-bottom:7px;">📖 해설 보기 — 번호를 누르면 풀이가 열려요</div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
+    +nums.map(function(n){
+        return '<button onclick="openSolution(\''+hw.id+'\','+n+')" style="background:var(--surface2);border:1px solid var(--bd2);color:var(--ink);font-size:13px;font-weight:600;padding:6px 11px;border-radius:8px;cursor:pointer;">'+n+'번</button>';
+      }).join('')
+    +'</div></div>';
+}
 function _aioSubmitCount(sub){ return (sub && sub.submittedFull) ? (sub.submitCount||1) : 0; }
 function openAioSolve(hwId){
   var sid=mySid();
@@ -1501,7 +1551,7 @@ function submitAio(){
     if(!HW_DONE[hw.id]) HW_DONE[hw.id]={};
     HW_DONE[hw.id][MY_KEY]={done:true};
     try{ notifyTelegram('📊 숙제 제출\n'+MY_NAME+' 학생 · '+_aioUnitName(hw)+' '+hw.qStart+'~'+hw.qEnd+'번\n맞음 '+r.counts.correct+' / 틀림 '+r.counts.wrong); }catch(e){}
-    showAioResult(r, payload.submitCount);
+    showAioResult(r, payload.submitCount, hw);
   }).catch(function(){
     _aioSubmitting=false;
     if(btn){ btn.disabled=false; btn.textContent=(_isRevise?'수정 제출하기 (마지막)':'제출하기'); }
@@ -1509,7 +1559,7 @@ function submitAio(){
   });
 }
 
-function showAioResult(r, submitCount){
+function showAioResult(r, submitCount, hw){
   var c=r.counts;
   var wrongArr=(r.wrong||[]).slice().sort(function(a,b){return a-b;});
   var pendArr=(r.pending||[]).slice().sort(function(a,b){return a-b;});
@@ -1541,6 +1591,7 @@ function showAioResult(r, submitCount){
     +'<div style="display:flex;justify-content:space-between;padding:7px 0;'+(c.pending?'border-bottom:1px solid var(--line);':'')+'"><span>틀린 문제</span><b style="color:var(--red)">'+c.wrong+'개</b></div>'
     +(c.pending?'<div style="display:flex;justify-content:space-between;padding:7px 0;"><span>직접확인(△)</span><b>'+c.pending+'개</b></div>':'')
     +numHtml
+    +(hw?solutionChipsHtml(hw):'')
     +'</div>'
     +((submitCount||1)<AIO_MAX_SUBMITS
         ? '<div style="font-size:12px;color:var(--muted);margin-top:14px;line-height:1.6;">답을 잘못 입력했다면<br>숙제 목록에서 <b>한 번 더 수정</b>할 수 있어요.</div>'
