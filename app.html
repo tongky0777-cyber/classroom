@@ -1271,11 +1271,16 @@ function renderHwStudent(){
         var toggleBtn=(wrongArr.length||pendArr.length)
           ? '<button class="icon-btn" style="margin-top:9px;padding:5px 12px;font-size:12px;" onclick="toggleWrongDetail(\''+h.id+'\',this)">틀린 번호 보기</button>'
           : '<div style="font-size:12px;color:var(--teal);margin-top:7px;">전부 맞았어요 🎉</div>';
+        var canRevise=_aioSubmitCount(sub)<AIO_MAX_SUBMITS;
+        var reviseBtn=canRevise
+          ? '<button class="icon-btn" style="margin-top:9px;margin-left:6px;padding:5px 12px;font-size:12px;color:var(--teal);border-color:var(--teal);" onclick="openAioSolve(\''+h.id+'\')">답 수정하기 (1회)</button>'
+          : '';
         html += '<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;">'
           +'<div style="font-size:13.5px;font-weight:700;">📊 '+esc(title)+'</div>'
           +'<div style="font-size:12px;color:var(--teal);margin-top:5px;">제출 완료 · 맞음 '+(c.correct!=null?c.correct:'-')+' / 틀림 '+(c.wrong!=null?c.wrong:'-')+(c.pending?' / △'+c.pending:'')+'</div>'
-          +'<div style="font-size:11px;color:var(--muted);margin-top:3px;">'+(sub.submittedAt||'')+' 제출 · 수정은 선생님께</div>'
+          +'<div style="font-size:11px;color:var(--muted);margin-top:3px;">'+(sub.submittedAt||'')+' 제출'+(canRevise?' · 한 번 더 수정할 수 있어요':' · 수정 완료 (추가 수정은 선생님께)')+'</div>'
           +toggleBtn
+          +reviseBtn
           +detailHtml
           +'</div>';
       } else {
@@ -1333,12 +1338,14 @@ function toggleWrongDetail(hwId, btn){
 
 // ===== 올인원 자동채점 풀이 화면 (앱 내) =====
 var _aioCtx=null;  // { hw, sid, inputs }
+var AIO_MAX_SUBMITS=2;   // 최초 제출 1회 + 수정 1회
+function _aioSubmitCount(sub){ return (sub && sub.submittedFull) ? (sub.submitCount||1) : 0; }
 function openAioSolve(hwId){
   var sid=mySid();
   var hw=HW_LIST.find(function(x){ return x.id===hwId; });
   if(!hw || !_isAioHw(hw) || !sid){ toast('숙제 정보를 찾을 수 없어요'); return; }
   var prev=WRONG_SUBS[hwId];
-  if(prev && prev.submittedFull){ toast('이미 제출한 숙제예요'); return; }
+  if(_aioSubmitCount(prev)>=AIO_MAX_SUBMITS){ toast('수정은 한 번만 할 수 있어요. 더 고치려면 선생님께 말해주세요'); return; }
   var main=document.getElementById('main');
   main.innerHTML='<div class="empty">정답표를 불러오는 중…</div>';
   var tmKey=_aioTmKeyOf(hw);
@@ -1362,14 +1369,17 @@ function renderAioSolve(){
     +'<div style="font-size:16px;font-weight:800;margin-top:3px;">'+esc(uname)+'</div>'
     +'<div style="font-size:12px;color:var(--muted);margin-top:3px;">'+hw.qStart+'번 ~ '+hw.qEnd+'번</div></div>'
     +'<div style="background:var(--gold-soft);border-radius:10px;padding:10px 13px;font-size:12px;color:#7a5a16;margin-bottom:12px;font-weight:600;line-height:1.6;">'
-    +'객관식은 번호를, 단답·분수는 답을 입력하세요. 채점 결과는 제출 후에 보여요.<br>△ 표시 문제는 자동채점이 안 돼서 수업시간에 선생님과 확인합니다.</div>'
+    +(_aioSubmitCount(WRONG_SUBS[hw.id])>0
+        ? '지난번에 낸 답이 그대로 들어가 있어요. 고칠 문제만 바꾸면 됩니다.<br><b>수정 제출은 이번이 마지막이에요.</b>'
+        : '객관식은 번호를, 단답·분수는 답을 입력하세요. 채점 결과는 제출 후에 보여요.<br>△ 표시 문제는 자동채점이 안 돼서 수업시간에 선생님과 확인합니다.')+'</div>'
     +'<div id="aio-qlist"></div>';
   main.innerHTML=html;
   var qlist=document.getElementById('aio-qlist');
   for(var n=hw.qStart;n<=hw.qEnd;n++){ qlist.appendChild(buildAioQ(n, _aioAK, hw.unitKey)); }
   var bar=document.createElement('div');
   bar.style.cssText='position:sticky;bottom:0;background:var(--cream);padding:12px 0;margin-top:6px;';
-  bar.innerHTML='<button class="send-btn" id="aio-submit" style="width:100%;padding:14px;font-size:15px;" onclick="submitAio()">제출하기</button>'
+  var _isRev=_aioSubmitCount(WRONG_SUBS[hw.id])>0;
+  bar.innerHTML='<button class="send-btn" id="aio-submit" style="width:100%;padding:14px;font-size:15px;" onclick="submitAio()">'+(_isRev?'수정 제출하기 (마지막)':'제출하기')+'</button>'
     +'<div id="aio-prog" style="text-align:center;font-size:12px;color:var(--muted);margin-top:6px;"></div>';
   main.appendChild(bar);
   updateAioProg();
@@ -1462,10 +1472,16 @@ function submitAio(){
   var hw=ctx.hw;
   var r=Grader.gradeHomework(_aioAK, hw.unitKey, hw.qStart, hw.qEnd, ctx.inputs);
   if(r.blank.length>0 && !confirm('아직 답하지 않은 문제가 '+r.blank.length+'개 있어요. 그래도 제출할까요?')) return;
+  var _prevSub=WRONG_SUBS[hw.id];
+  var _isRevise=_aioSubmitCount(_prevSub)>0;
+  if(_isRevise && !confirm('수정 제출은 이번이 마지막이에요. 제출할까요?')) return;
   _aioSubmitting=true;
   var btn=document.getElementById('aio-submit'); if(btn){ btn.disabled=true; btn.textContent='제출 중…'; }
+  var _nowIso=new Date().toISOString();
   var payload={ inputs:ctx.inputs, wrong:r.wrong, correct:r.correct, pending:r.pending, counts:r.counts,
-    done:true, submittedAt:todayStr(), submittedFull:new Date().toISOString() };
+    done:true, submittedAt:todayStr(), submittedFull:_nowIso,
+    submitCount:(_isRevise?(_prevSub.submitCount||1)+1:1),
+    firstSubmittedAt:(_isRevise?(_prevSub.firstSubmittedAt||_prevSub.submittedFull):_nowIso) };
   db.ref('wronganswers/'+hw.id+'/'+ctx.sid).set(payload).then(function(){
     WRONG_SUBS[hw.id]=payload;
     syncHwStatusToDashboard(hw.id, 'done');
@@ -1473,15 +1489,15 @@ function submitAio(){
     if(!HW_DONE[hw.id]) HW_DONE[hw.id]={};
     HW_DONE[hw.id][MY_KEY]={done:true};
     try{ notifyTelegram('📊 숙제 제출\n'+MY_NAME+' 학생 · '+_aioUnitName(hw)+' '+hw.qStart+'~'+hw.qEnd+'번\n맞음 '+r.counts.correct+' / 틀림 '+r.counts.wrong); }catch(e){}
-    showAioResult(r);
+    showAioResult(r, payload.submitCount);
   }).catch(function(){
     _aioSubmitting=false;
-    if(btn){ btn.disabled=false; btn.textContent='제출하기'; }
+    if(btn){ btn.disabled=false; btn.textContent=(_isRevise?'수정 제출하기 (마지막)':'제출하기'); }
     toast('제출 실패. 다시 시도해 주세요');
   });
 }
 
-function showAioResult(r){
+function showAioResult(r, submitCount){
   var c=r.counts;
   var wrongArr=(r.wrong||[]).slice().sort(function(a,b){return a-b;});
   var pendArr=(r.pending||[]).slice().sort(function(a,b){return a-b;});
@@ -1514,6 +1530,9 @@ function showAioResult(r){
     +(c.pending?'<div style="display:flex;justify-content:space-between;padding:7px 0;"><span>직접확인(△)</span><b>'+c.pending+'개</b></div>':'')
     +numHtml
     +'</div>'
+    +((submitCount||1)<AIO_MAX_SUBMITS
+        ? '<div style="font-size:12px;color:var(--muted);margin-top:14px;line-height:1.6;">답을 잘못 입력했다면<br>숙제 목록에서 <b>한 번 더 수정</b>할 수 있어요.</div>'
+        : '<div style="font-size:12px;color:var(--muted);margin-top:14px;">수정 기회를 모두 사용했어요.</div>')
     +'<button class="send-btn" style="margin-top:18px;padding:12px 28px;" onclick="setTab(\'hw\')">숙제 목록으로</button></div>';
 }
 
