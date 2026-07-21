@@ -1248,9 +1248,10 @@ function renderHwStudent(){
       var uname=_aioUnitName(h);
       var title=_aioBookOf(h)+' '+uname+' '+h.qStart+'~'+h.qEnd+'번';
       if(sub && sub.submittedFull){
-        var c=sub.counts||{};
-        var wrongArr=(sub.wrong||[]).slice().sort(function(a,b){return a-b;});
-        var pendArr=(sub.pending||[]).slice().sort(function(a,b){return a-b;});
+        var shown=sub.revised||sub;   // 학생 화면은 최신(수정본), 저장된 분석은 최초 채점 유지
+        var c=shown.counts||{};
+        var wrongArr=(shown.wrong||[]).slice().sort(function(a,b){return a-b;});
+        var pendArr=(shown.pending||[]).slice().sort(function(a,b){return a-b;});
         var detailHtml='';
         if(wrongArr.length || pendArr.length){
           detailHtml='<div id="wd-'+h.id+'" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);">';
@@ -1278,7 +1279,7 @@ function renderHwStudent(){
         html += '<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;">'
           +'<div style="font-size:13.5px;font-weight:700;">📊 '+esc(title)+'</div>'
           +'<div style="font-size:12px;color:var(--teal);margin-top:5px;">제출 완료 · 맞음 '+(c.correct!=null?c.correct:'-')+' / 틀림 '+(c.wrong!=null?c.wrong:'-')+(c.pending?' / △'+c.pending:'')+'</div>'
-          +'<div style="font-size:11px;color:var(--muted);margin-top:3px;">'+(sub.submittedAt||'')+' 제출'+(canRevise?' · 한 번 더 수정할 수 있어요':' · 수정 완료 (추가 수정은 선생님께)')+'</div>'
+          +'<div style="font-size:11px;color:var(--muted);margin-top:3px;">'+(shown.submittedAt||'')+' 제출'+(canRevise?' · 한 번 더 수정할 수 있어요':' · 수정 완료 (추가 수정은 선생님께)')+'</div>'
           +toggleBtn
           +reviseBtn
           +detailHtml
@@ -1478,10 +1479,21 @@ function submitAio(){
   _aioSubmitting=true;
   var btn=document.getElementById('aio-submit'); if(btn){ btn.disabled=true; btn.textContent='제출 중…'; }
   var _nowIso=new Date().toISOString();
-  var payload={ inputs:ctx.inputs, wrong:r.wrong, correct:r.correct, pending:r.pending, counts:r.counts,
-    done:true, submittedAt:todayStr(), submittedFull:_nowIso,
-    submitCount:(_isRevise?(_prevSub.submitCount||1)+1:1),
-    firstSubmittedAt:(_isRevise?(_prevSub.firstSubmittedAt||_prevSub.submittedFull):_nowIso) };
+  var payload;
+  if(_isRevise){
+    // 최초 채점 결과(inputs/wrong/correct/counts)는 최상위에 그대로 보존한다.
+    // 선생님 교재 오답분석은 항상 이 '처음 채점'을 기준으로 집계된다.
+    // 학생이 고친 답은 revised 에만 따로 저장해 학생 화면 표시용으로만 쓴다.
+    payload=Object.assign({}, _prevSub, {
+      submitCount:(_prevSub.submitCount||1)+1,
+      revised:{ inputs:ctx.inputs, wrong:r.wrong, correct:r.correct, pending:r.pending,
+                counts:r.counts, submittedAt:todayStr(), submittedFull:_nowIso }
+    });
+  } else {
+    payload={ inputs:ctx.inputs, wrong:r.wrong, correct:r.correct, pending:r.pending, counts:r.counts,
+      done:true, submittedAt:todayStr(), submittedFull:_nowIso,
+      submitCount:1, firstSubmittedAt:_nowIso };
+  }
   db.ref('wronganswers/'+hw.id+'/'+ctx.sid).set(payload).then(function(){
     WRONG_SUBS[hw.id]=payload;
     syncHwStatusToDashboard(hw.id, 'done');
