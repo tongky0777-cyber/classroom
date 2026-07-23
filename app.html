@@ -1293,17 +1293,18 @@ function renderHwStudent(){
         var toggleBtn=(wrongArr.length||pendArr.length)
           ? '<button class="icon-btn" style="margin-top:9px;padding:5px 12px;font-size:12px;" onclick="toggleWrongDetail(\''+h.id+'\',this)">틀린 번호 보기</button>'
           : '<div style="font-size:12px;color:var(--teal);margin-top:7px;">전부 맞았어요 🎉</div>';
-        var canRevise=_aioSubmitCount(sub)<AIO_MAX_SUBMITS;
+        var canRevise=!sub.finalized && _aioSubmitCount(sub)<AIO_MAX_SUBMITS;
         var reviseBtn=canRevise
           ? '<button class="icon-btn" style="margin-top:9px;margin-left:6px;padding:5px 12px;font-size:12px;color:var(--teal);border-color:var(--teal);" onclick="openAioSolve(\''+h.id+'\')">답 수정하기 (1회)</button>'
           : '';
         html += '<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;">'
           +'<div style="font-size:13.5px;font-weight:700;">📊 '+esc(title)+'</div>'
           +'<div style="font-size:12px;color:var(--teal);margin-top:5px;">제출 완료 · 맞음 '+(c.correct!=null?c.correct:'-')+' / 틀림 '+(c.wrong!=null?c.wrong:'-')+(c.pending?' / △'+c.pending:'')+'</div>'
-          +'<div style="font-size:11px;color:var(--muted);margin-top:3px;">'+(shown.submittedAt||'')+' 제출'+(canRevise?' · 한 번 더 수정할 수 있어요':' · 수정 완료 (추가 수정은 선생님께)')+'</div>'
+          +'<div style="font-size:11px;color:var(--muted);margin-top:3px;">'+(shown.submittedAt||'')+' 제출'+(canRevise?' · 한 번 더 수정할 수 있어요':' · 제출 완료')+'</div>'
           +toggleBtn
           +reviseBtn
           +detailHtml
+          +solutionLockHtml(h)
           +solutionChipsHtml(h)
           +'</div>';
       } else {
@@ -1388,17 +1389,35 @@ function _solUrl(hw, no){
   var b=_solIndex&&_solIndex[_aioTmKeyOf(hw)]; if(!b) return '';
   return SOLUTION_BASE+encodeURIComponent(b.dir)+'/'+encodeURIComponent(hw.unitKey)+'/'+String(no).padStart(3,'0')+'.jpg';
 }
+// 해설 열람 가능 여부: 완전 제출(수정 기회 소진 or 수정 포기)일 때만 true
+function _solUnlocked(sub){
+  return !!(sub && sub.submittedFull && (sub.finalized || (sub.submitCount||1) >= AIO_MAX_SUBMITS));
+}
 function openSolution(hwId, no){
   var hw=HW_LIST.find(function(x){ return x.id===hwId; });
   if(!hw){ toast('숙제 정보를 찾을 수 없어요'); return; }
   var sub=WRONG_SUBS[hwId];
-  if(!(sub&&sub.submittedFull)){ toast('제출한 뒤에 해설을 볼 수 있어요'); return; }
+  if(!_solUnlocked(sub)){ toast('완전 제출한 뒤에 해설을 볼 수 있어요'); return; }
   var url=_solUrl(hw,no);
   if(!url){ toast('해설을 찾을 수 없어요'); return; }
   openPhoto(url);
 }
-// 제출 완료 카드/결과 화면에 붙일 '해설 보기' 칩 묶음
+// '수정 없이 완전 제출' → 답은 그대로 두고 해설만 잠금 해제
+function finalizeAioForSolution(hwId){
+  var sub=WRONG_SUBS[hwId];
+  if(!(sub&&sub.submittedFull)) return;
+  if(!confirm('지금 답안으로 제출을 마칠까요?\n더 이상 답을 수정할 수 없고, 대신 해설을 볼 수 있어요.')) return;
+  var sid=mySid(); if(!sid) return;
+  db.ref('wronganswers/'+hwId+'/'+sid).update({ finalized:true }).then(function(){
+    sub.finalized=true; WRONG_SUBS[hwId]=sub;
+    renderHwStudent();
+    toast('제출을 완료했어요. 이제 해설을 볼 수 있어요');
+  }).catch(function(){ toast('잠시 후 다시 시도해 주세요'); });
+}
+// 제출 완료 카드/결과 화면에 붙일 '해설 보기' 칩 묶음 (완전 제출 후에만)
 function solutionChipsHtml(hw){
+  var sub=WRONG_SUBS[hw.id];
+  if(!_solUnlocked(sub)) return '';
   var nums=_solNumsFor(hw);
   if(!nums.length) return '';
   return '<div style="margin-top:12px;padding-top:11px;border-top:1px solid var(--line);">'
@@ -1409,12 +1428,24 @@ function solutionChipsHtml(hw){
       }).join('')
     +'</div></div>';
 }
+// 아직 수정 가능한 상태(1차 제출 직후)에 보여줄 안내 + '수정 없이 해설 보기' 버튼
+function solutionLockHtml(hw){
+  var sub=WRONG_SUBS[hw.id];
+  if(_solUnlocked(sub)) return '';                 // 이미 열렸으면 불필요
+  if(!(sub&&sub.submittedFull)) return '';         // 미제출이면 표시 안 함
+  if(!_solNumsFor(hw).length) return '';           // 해설 자체가 없으면 표시 안 함
+  return '<div style="margin-top:12px;padding-top:11px;border-top:1px solid var(--line);">'
+    +'<div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.6;">📖 해설은 <b>완전 제출</b> 후에 볼 수 있어요.<br>한 번 더 고치거나, 지금 답안으로 제출을 마치면 열려요.</div>'
+    +'<button onclick="finalizeAioForSolution(\''+hw.id+'\')" style="background:var(--surface2);border:1px solid var(--teal);color:var(--teal);font-size:12px;font-weight:700;padding:7px 13px;border-radius:8px;cursor:pointer;">수정 없이 해설 보기</button>'
+    +'</div>';
+}
 function _aioSubmitCount(sub){ return (sub && sub.submittedFull) ? (sub.submitCount||1) : 0; }
 function openAioSolve(hwId){
   var sid=mySid();
   var hw=HW_LIST.find(function(x){ return x.id===hwId; });
   if(!hw || !_isAioHw(hw) || !sid){ toast('숙제 정보를 찾을 수 없어요'); return; }
   var prev=WRONG_SUBS[hwId];
+  if(prev && prev.finalized){ toast('이미 제출을 완료했어요. 수정하려면 선생님께 말해주세요'); return; }
   if(_aioSubmitCount(prev)>=AIO_MAX_SUBMITS){ toast('수정은 한 번만 할 수 있어요. 더 고치려면 선생님께 말해주세요'); return; }
   var main=document.getElementById('main');
   main.innerHTML='<div class="empty">정답표를 불러오는 중…</div>';
@@ -1610,6 +1641,7 @@ function showAioResult(r, submitCount, hw){
     +'<div style="display:flex;justify-content:space-between;padding:7px 0;'+(c.pending?'border-bottom:1px solid var(--line);':'')+'"><span>틀린 문제</span><b style="color:var(--red)">'+c.wrong+'개</b></div>'
     +(c.pending?'<div style="display:flex;justify-content:space-between;padding:7px 0;"><span>직접확인(△)</span><b>'+c.pending+'개</b></div>':'')
     +numHtml
+    +(hw?solutionLockHtml(hw):'')
     +(hw?solutionChipsHtml(hw):'')
     +'</div>'
     +((submitCount||1)<AIO_MAX_SUBMITS
