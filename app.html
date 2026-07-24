@@ -1392,7 +1392,10 @@ function _solUrl(hw, no){
 }
 // 해설 열람 가능 여부: 완전 제출(수정 기회 소진 or 수정 포기)일 때만 true
 function _solUnlocked(sub){
-  return !!(sub && sub.submittedFull && (sub.finalized || (sub.submitCount||1) >= AIO_MAX_SUBMITS));
+  if(!(sub && sub.submittedFull)) return false;
+  if(sub.finalized) return true;                 // 수정 없이 완전 제출함
+  if(sub.submitCount == null) return true;       // 수정 기능 도입 전 제출 → 예전처럼 바로 열람
+  return (sub.submitCount||1) >= AIO_MAX_SUBMITS; // 수정까지 소진 → 열람
 }
 function openSolution(hwId, no){
   var hw=HW_LIST.find(function(x){ return x.id===hwId; });
