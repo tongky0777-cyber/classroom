@@ -1252,8 +1252,9 @@ function renderHome(){
 
 function renderHwStudent(){
   // 해설 목록은 한 번만 불러오고, 준비되면 다시 그린다
-  if(!_solIndex){ loadSolutionIndex().then(function(){ renderHwStudent(); }); }
+  if(!_solIndex){ loadSolutionIndex().then(function(){ if(CUR_TAB==='hw') renderHwStudent(); }); }
   var main=document.getElementById('main');
+  main.innerHTML='';   // 항상 새로 그림 — 해설 로드 후 재렌더가 이전 목록 위에 겹쳐 그려지던 문제 방지
   var sid = mySid();
   if(!sid){
     main.innerHTML += '<div class="empty">아직 선생님과 연결되지 않았어요.<br>선생님이 대시보드에서 계정을 연결하면<br>숙제가 여기 표시됩니다.</div>';
