@@ -92,7 +92,7 @@
   .modal-photo.on{display:flex;}
   .modal-photo img{max-width:100%;max-height:100vh;object-fit:contain;cursor:zoom-in;display:block;margin:auto;}
   .modal-photo.zoomed{align-items:flex-start;justify-content:flex-start;}
-  .modal-photo.zoomed img{max-width:none;max-height:none;width:200%;height:auto;object-fit:fill;cursor:zoom-out;margin:0;}
+  .modal-photo.zoomed img{max-width:none;max-height:none;height:auto;object-fit:fill;cursor:zoom-out;margin:0;}
   .modal-photo .close-x{position:fixed;top:14px;right:18px;color:#fff;font-size:34px;line-height:1;cursor:pointer;z-index:201;text-shadow:0 1px 4px rgba(0,0,0,.6);}
   .modal-photo .zoom-hint{position:fixed;bottom:18px;left:0;right:0;text-align:center;color:#fff;font-size:12px;opacity:.75;z-index:201;pointer-events:none;}
   /* 관리자 */
@@ -473,21 +473,37 @@ function compressImage(file, cb){
   reader.readAsDataURL(file);
 }
 
+// 확대 단계: '' = 화면 맞춤, 그다음 폭 배율. 탭할 때마다 다음 단계로 순환.
+var PHOTO_ZOOM_W = ['', '200%', '360%'];
+var _photoZoomLv = 0;
 function openPhoto(src){
   var big=document.getElementById('photoBig'); big.src=src;
-  var modal=document.getElementById('photoModal');
-  modal.classList.remove('zoomed');
-  var hint=document.getElementById('zoomHint'); if(hint){ hint.textContent='사진을 탭하면 확대 · 다시 탭하면 축소'; hint.style.display='block'; }
-  modal.classList.add('on');
+  _photoZoomLv = 0;
+  applyPhotoZoom();
+  document.getElementById('photoModal').classList.add('on');
 }
 function closePhoto(){ var m=document.getElementById('photoModal'); m.classList.remove('on'); m.classList.remove('zoomed'); }
 function togglePhotoZoom(){
+  _photoZoomLv = (_photoZoomLv + 1) % PHOTO_ZOOM_W.length;
+  applyPhotoZoom();
+}
+function applyPhotoZoom(){
   var modal=document.getElementById('photoModal');
-  modal.classList.toggle('zoomed');
-  var zoomed=modal.classList.contains('zoomed');
+  var img=document.getElementById('photoBig');
   var hint=document.getElementById('zoomHint');
-  if(zoomed){ modal.scrollLeft = (modal.scrollWidth-modal.clientWidth)/2; if(hint) hint.textContent='밀어서 이동 · 탭하면 원래대로'; }
-  else { modal.scrollTop=0; modal.scrollLeft=0; if(hint) hint.textContent='사진을 탭하면 확대 · 다시 탭하면 축소'; }
+  var w = PHOTO_ZOOM_W[_photoZoomLv];
+  if(!w){  // 화면 맞춤
+    modal.classList.remove('zoomed');
+    img.style.width=''; img.style.maxWidth='100%'; img.style.maxHeight='100vh';
+    modal.scrollTop=0; modal.scrollLeft=0;
+    if(hint){ hint.textContent='사진을 탭하면 확대돼요'; hint.style.display='block'; }
+  } else {  // 확대
+    modal.classList.add('zoomed');
+    img.style.maxWidth='none'; img.style.maxHeight='none'; img.style.width=w;
+    modal.scrollLeft = (modal.scrollWidth - modal.clientWidth)/2;  // 가로 중앙부터
+    var last = (_photoZoomLv === PHOTO_ZOOM_W.length-1);
+    if(hint){ hint.textContent = '밀어서 이동 · 탭하면 '+(last?'원래대로':'더 확대'); hint.style.display='block'; }
+  }
 }
 function openModal(html){ document.getElementById('modalBox').innerHTML=html; document.getElementById('modal').classList.add('on'); }
 function closeModal(){ document.getElementById('modal').classList.remove('on'); }
