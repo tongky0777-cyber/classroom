@@ -318,16 +318,21 @@ function verifyAdminSession(cb){
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({action:'verify', token:token})
   }).then(function(res){
-    if(!res.ok) throw new Error('verify failed');
+    // 서버가 명확히 '토큰 만료·무효(401)'라고 답할 때만 로그아웃한다.
+    // 네트워크 지연·서버리스 콜드스타트·일시적 5xx·CORS 실패 등으로는 로그아웃하지 않는다. (학생 세션과 동일 정책)
+    if(res.status===401){ clearClassSession(); location.href='index.html'; return null; }
+    if(!res.ok) throw new Error('transient'); // 일시 오류 → 세션 유지
     return res.json();
   }).then(function(r){
-    if(!r || !r.ok || r.role!==MY_ROLE) throw new Error('verify failed');
+    if(r===null) return;                      // 이미 로그아웃 처리됨
+    if(!r || !r.ok) throw new Error('transient'); // 200인데 응답이 이상하면 일시 오류로 취급(로그아웃 안 함)
+    if(r.role && r.role!==MY_ROLE){ clearClassSession(); location.href='index.html'; return; }
     if(r.name) localStorage.setItem('class_name', r.name);
     if(r.key) localStorage.setItem('class_namekey', r.key);
     cb();
   }).catch(function(){
-    clearClassSession();
-    location.href='index.html';
+    // 네트워크/일시 오류로는 로그아웃하지 않고, 저장된 세션으로 계속 진행한다.
+    cb();
   });
 }
 function verifyStudentSession(cb){
