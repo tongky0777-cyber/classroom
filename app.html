@@ -1596,6 +1596,8 @@ function submitAio(){
   if(_aioSubmitting) return;
   if(!requireStudentSession()) return;
   var ctx=_aioCtx; if(!ctx) return;
+  if(!ctx.sid) ctx.sid=mySid();   // 학생 목록이 늦게 로드됐을 수 있으니 제출 직전 재확인
+  if(!ctx.sid){ toast('학생 정보를 불러오는 중이에요. 새로고침 후 다시 시도해주세요.'); return; }
   var hw=ctx.hw;
   var r=Grader.gradeHomework(_aioAK, hw.unitKey, hw.qStart, hw.qEnd, ctx.inputs);
   if(r.blank.length>0 && !confirm('아직 답하지 않은 문제가 '+r.blank.length+'개 있어요. 그래도 제출할까요?')) return;
@@ -1620,7 +1622,10 @@ function submitAio(){
       done:true, submittedAt:todayStr(), submittedFull:_nowIso,
       submitCount:1, firstSubmittedAt:_nowIso };
   }
-  db.ref('wronganswers/'+hw.id+'/'+ctx.sid).set(payload).then(function(){
+  // 익명 인증이 준비된 뒤에 쓴다 (보안 규칙 auth!=null 통과). 준비 안 됐으면 기다렸다가 저장.
+  (window._authReady || Promise.resolve()).then(function(){
+    return db.ref('wronganswers/'+hw.id+'/'+ctx.sid).set(payload);
+  }).then(function(){
     WRONG_SUBS[hw.id]=payload;
     syncHwStatusToDashboard(hw.id, 'done');
     db.ref(CP('class_hw_done/')+hw.id+'/'+MY_KEY).set({ done:true, at:new Date().toISOString(), name:MY_NAME });
@@ -1628,10 +1633,11 @@ function submitAio(){
     HW_DONE[hw.id][MY_KEY]={done:true};
     try{ notifyTelegram('📊 숙제 제출\n'+MY_NAME+' 학생 · '+_aioUnitName(hw)+' '+hw.qStart+'~'+hw.qEnd+'번\n맞음 '+r.counts.correct+' / 틀림 '+r.counts.wrong); }catch(e){}
     showAioResult(r, payload.submitCount, hw);
-  }).catch(function(){
+  }).catch(function(e){
     _aioSubmitting=false;
     if(btn){ btn.disabled=false; btn.textContent=(_isRevise?'수정 제출하기 (마지막)':'제출하기'); }
-    toast('제출 실패. 다시 시도해 주세요');
+    var perm = (e && (e.code==='PERMISSION_DENIED' || /permission/i.test(e.message||'')));
+    toast(perm ? '로그인(인증)이 잠시 풀렸어요. 새로고침 후 다시 시도해주세요.' : ('제출 실패: '+((e&&e.message)||'네트워크를 확인해주세요')));
   });
 }
 
@@ -1681,13 +1687,13 @@ function toggleHwDone(hwId, done){
   var ref = db.ref(CP('class_hw_done/')+hwId+'/'+MY_KEY);
   if(done){
     var rec = { done:true, at:new Date().toISOString(), name:MY_NAME };
-    ref.set(rec).then(function(){
+    (window._authReady || Promise.resolve()).then(function(){ return ref.set(rec); }).then(function(){
       if(!HW_DONE[hwId]) HW_DONE[hwId]={};
       HW_DONE[hwId][MY_KEY]=rec;
       syncHwStatusToDashboard(hwId, 'done');
       notifyTelegram('✅ 숙제 완료\n'+MY_NAME+' 학생');
       toast('완료 체크했어요'); renderMain();
-    }).catch(function(){ toast('실패. 다시 시도해 주세요'); });
+    }).catch(function(e){ var perm=(e&&(e.code==='PERMISSION_DENIED'||/permission/i.test(e.message||''))); toast(perm?'로그인이 잠시 풀렸어요. 새로고침 후 다시 시도해주세요.':('실패: '+((e&&e.message)||'네트워크를 확인해주세요'))); });
   } else {
     ref.set({ done:false, at:new Date().toISOString(), name:MY_NAME }).then(function(){
       if(!HW_DONE[hwId]) HW_DONE[hwId]={};
