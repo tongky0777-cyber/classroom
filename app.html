@@ -1299,22 +1299,23 @@ function renderHwStudent(){
         if(wrongArr.length || pendArr.length){
           detailHtml='<div id="wd-'+h.id+'" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--line);">';
           if(wrongArr.length){
-            detailHtml+='<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">틀린 번호</div>'
+            detailHtml+='<div style="border-left:3px dashed var(--red);padding-left:9px;">'
+              +'<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">\u00d7 오답</div>'
               +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
-              +wrongArr.map(function(n){ return '<span style="background:var(--red-bg);color:var(--red);font-size:13px;font-weight:700;padding:5px 10px;border-radius:8px;">'+n+'번</span>'; }).join('')
-              +'</div>';
+              +wrongArr.map(function(n){ return '<span style="background:var(--red-bg);color:var(--red);font-size:13px;font-weight:700;padding:5px 10px;border-radius:8px;">\u00d7 '+n+'번</span>'; }).join('')
+              +'</div></div>';
           }
           if(pendArr.length){
-            detailHtml+='<div style="font-size:11px;color:var(--muted);margin:10px 0 6px;">직접 확인 (△)</div>'
+            detailHtml+='<div style="font-size:11px;color:var(--muted);margin:10px 0 6px;">\u2013 미채점 · 직접 확인 (△)</div>'
               +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
-              +pendArr.map(function(n){ return '<span style="background:var(--surface2);color:var(--muted);font-size:13px;padding:5px 10px;border-radius:8px;">'+n+'번</span>'; }).join('')
+              +pendArr.map(function(n){ return '<span style="background:var(--surface2);color:var(--muted);font-size:13px;padding:5px 10px;border-radius:8px;">\u2013 '+n+'번</span>'; }).join('')
               +'</div>';
           }
           detailHtml+='</div>';
         }
         var toggleBtn=(wrongArr.length||pendArr.length)
           ? '<button class="icon-btn" style="margin-top:9px;padding:5px 12px;font-size:12px;" onclick="toggleWrongDetail(\''+h.id+'\',this)">틀린 번호 보기</button>'
-          : '<div style="font-size:12px;color:var(--teal-l);margin-top:7px;">전부 맞았어요 🎉</div>';
+          : '<div style="font-size:12px;color:var(--teal-l);margin-top:7px;border-left:3px solid var(--teal-l);padding-left:9px;">\u25cb 정답 · 전부 맞았어요 🎉</div>';
         var canRevise=!sub.finalized && _aioSubmitCount(sub)<AIO_MAX_SUBMITS;
         var reviseBtn=canRevise
           ? '<button class="icon-btn" style="margin-top:9px;margin-left:6px;padding:5px 12px;font-size:12px;color:var(--teal-l);border-color:var(--teal);" onclick="openAioSolve(\''+h.id+'\')">답 수정하기 (1회)</button>'
@@ -1648,20 +1649,21 @@ function showAioResult(r, submitCount, hw){
   var numHtml='';
   if(wrongArr.length){
     numHtml+='<div style="margin-top:14px;text-align:left;border-top:1px solid var(--line);padding-top:12px;">'
-      +'<div style="font-size:12px;color:var(--muted);margin-bottom:7px;">틀린 번호</div>'
+      +'<div style="border-left:3px dashed var(--red);padding-left:9px;">'
+      +'<div style="font-size:12px;color:var(--muted);margin-bottom:7px;">\u00d7 오답</div>'
       +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
-      +wrongArr.map(function(n){ return '<span style="background:var(--red-bg);color:var(--red);font-size:13px;font-weight:700;padding:6px 11px;border-radius:8px;">'+n+'번</span>'; }).join('')
-      +'</div></div>';
+      +wrongArr.map(function(n){ return '<span style="background:var(--red-bg);color:var(--red);font-size:13px;font-weight:700;padding:6px 11px;border-radius:8px;">\u00d7 '+n+'번</span>'; }).join('')
+      +'</div></div></div>';
   }
   if(pendArr.length){
     numHtml+='<div style="margin-top:'+(wrongArr.length?'10px':'14px;border-top:1px solid var(--line);padding-top:12px')+';text-align:left;">'
-      +'<div style="font-size:12px;color:var(--muted);margin-bottom:7px;">직접 확인 (△)</div>'
+      +'<div style="font-size:12px;color:var(--muted);margin-bottom:7px;">\u2013 미채점 · 직접 확인 (△)</div>'
       +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
-      +pendArr.map(function(n){ return '<span style="background:var(--surface2);color:var(--muted);font-size:13px;padding:6px 11px;border-radius:8px;">'+n+'번</span>'; }).join('')
+      +pendArr.map(function(n){ return '<span style="background:var(--surface2);color:var(--muted);font-size:13px;padding:6px 11px;border-radius:8px;">\u2013 '+n+'번</span>'; }).join('')
       +'</div></div>';
   }
   if(!wrongArr.length && !pendArr.length){
-    numHtml='<div style="margin-top:14px;font-size:13px;color:var(--teal-l);font-weight:700;">전부 맞았어요 🎉</div>';
+    numHtml='<div style="margin-top:14px;font-size:13px;color:var(--teal-l);font-weight:700;border-left:3px solid var(--teal-l);padding-left:9px;text-align:left;">\u25cb 정답 · 전부 맞았어요 🎉</div>';
   }
   var main=document.getElementById('main');
   main.innerHTML='<div style="text-align:center;padding:30px 16px;">'
@@ -1669,9 +1671,9 @@ function showAioResult(r, submitCount, hw){
     +'<div style="font-size:18px;font-weight:800;margin:8px 0 16px;">제출 완료!</div>'
     +'<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;text-align:left;max-width:320px;margin:0 auto;">'
     +'<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);"><span>전체 문제</span><b>'+c.total+'개</b></div>'
-    +'<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);"><span>맞은 문제</span><b style="color:var(--teal-l)">'+c.correct+'개</b></div>'
-    +'<div style="display:flex;justify-content:space-between;padding:7px 0;'+(c.pending?'border-bottom:1px solid var(--line);':'')+'"><span>틀린 문제</span><b style="color:var(--red)">'+c.wrong+'개</b></div>'
-    +(c.pending?'<div style="display:flex;justify-content:space-between;padding:7px 0;"><span>직접확인(△)</span><b>'+c.pending+'개</b></div>':'')
+    +'<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);"><span>\u25cb 맞은 문제</span><b style="color:var(--teal-l)">'+c.correct+'개</b></div>'
+    +'<div style="display:flex;justify-content:space-between;padding:7px 0;'+(c.pending?'border-bottom:1px solid var(--line);':'')+'"><span>\u00d7 틀린 문제</span><b style="color:var(--red)">'+c.wrong+'개</b></div>'
+    +(c.pending?'<div style="display:flex;justify-content:space-between;padding:7px 0;"><span>\u2013 직접확인(△)</span><b>'+c.pending+'개</b></div>':'')
     +numHtml
     +(hw?solutionLockHtml(hw):'')
     +(hw?solutionChipsHtml(hw):'')
