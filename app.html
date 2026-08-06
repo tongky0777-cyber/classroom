@@ -1270,7 +1270,7 @@ function renderHwStudent(){
 
   var html = '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">'
     +'<span style="font-size:14px;font-weight:700;">받은 숙제</span>'
-    +'<span style="font-size:13px;color:var(--teal);font-weight:700;">'+doneCnt+' / '+mine.length+' 완료</span></div>';
+    +'<span style="font-size:13px;color:var(--teal-l);font-weight:700;">'+doneCnt+' / '+mine.length+' 완료</span></div>';
 
   if(!mine.length){ main.innerHTML += html + '<div class="empty">아직 받은 숙제가 없어요.</div>'; return; }
 
@@ -1314,14 +1314,14 @@ function renderHwStudent(){
         }
         var toggleBtn=(wrongArr.length||pendArr.length)
           ? '<button class="icon-btn" style="margin-top:9px;padding:5px 12px;font-size:12px;" onclick="toggleWrongDetail(\''+h.id+'\',this)">틀린 번호 보기</button>'
-          : '<div style="font-size:12px;color:var(--teal);margin-top:7px;">전부 맞았어요 🎉</div>';
+          : '<div style="font-size:12px;color:var(--teal-l);margin-top:7px;">전부 맞았어요 🎉</div>';
         var canRevise=!sub.finalized && _aioSubmitCount(sub)<AIO_MAX_SUBMITS;
         var reviseBtn=canRevise
-          ? '<button class="icon-btn" style="margin-top:9px;margin-left:6px;padding:5px 12px;font-size:12px;color:var(--teal);border-color:var(--teal);" onclick="openAioSolve(\''+h.id+'\')">답 수정하기 (1회)</button>'
+          ? '<button class="icon-btn" style="margin-top:9px;margin-left:6px;padding:5px 12px;font-size:12px;color:var(--teal-l);border-color:var(--teal);" onclick="openAioSolve(\''+h.id+'\')">답 수정하기 (1회)</button>'
           : '';
         html += '<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;">'
           +'<div style="font-size:13.5px;font-weight:700;">📊 '+esc(title)+'</div>'
-          +'<div style="font-size:12px;color:var(--teal);margin-top:5px;">제출 완료 · 맞음 '+(c.correct!=null?c.correct:'-')+' / 틀림 '+(c.wrong!=null?c.wrong:'-')+(c.pending?' / △'+c.pending:'')+'</div>'
+          +'<div style="font-size:12px;color:var(--teal-l);margin-top:5px;">제출 완료 · 맞음 '+(c.correct!=null?c.correct:'-')+' / 틀림 '+(c.wrong!=null?c.wrong:'-')+(c.pending?' / △'+c.pending:'')+'</div>'
           +'<div style="font-size:11px;color:var(--muted);margin-top:3px;">'+(shown.submittedAt||'')+' 제출'+(canRevise?' · 한 번 더 수정할 수 있어요':' · 제출 완료')+'</div>'
           +toggleBtn
           +reviseBtn
@@ -1356,7 +1356,7 @@ function renderHwStudent(){
         +'<div style="flex:1;min-width:0;">'
         +'<div style="font-size:13.5px;font-weight:700;text-decoration:line-through;">'+esc(info||h.name||'숙제')+'</div>'
         +(range?'<div style="font-size:12px;color:var(--muted);margin-top:3px;">'+esc(range)+(h.due?' · '+h.due+'까지':'')+'</div>':'')
-        +'<div style="font-size:11px;color:var(--teal);margin-top:4px;">'+doneLabel+'</div>'
+        +'<div style="font-size:11px;color:var(--teal-l);margin-top:4px;">'+doneLabel+'</div>'
         +btn
         +'</div></div></div>';
     } else {
@@ -1389,7 +1389,7 @@ var AIO_MAX_SUBMITS=2;   // 최초 제출 1회 + 수정 1회
 // ===== 해설 이미지 (제출 후에만 열람) =====
 // 나중에 Firebase Storage로 옮길 땐 이 주소 한 줄만 바꾸면 된다.
 var SOLUTION_BASE='./data/해설/';
-var SOL_VER='20260805a';  // 해설 이미지 갱신 시 이 값을 바꾸면 학생 캐시가 새로고침됨
+var SOL_VER='20260806a';  // 해설 이미지 갱신 시 이 값을 바꾸면 학생 캐시가 새로고침됨
 var _solIndex=null, _solLoading=null;
 function loadSolutionIndex(){
   if(_solIndex) return Promise.resolve(_solIndex);
@@ -1462,7 +1462,7 @@ function solutionLockHtml(hw){
   if(!_solNumsFor(hw).length) return '';           // 해설 자체가 없으면 표시 안 함
   return '<div style="margin-top:12px;padding-top:11px;border-top:1px solid var(--line);">'
     +'<div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.6;">📖 해설은 <b>완전 제출</b> 후에 볼 수 있어요.<br>한 번 더 고치거나, 지금 답안으로 제출을 마치면 열려요.</div>'
-    +'<button onclick="finalizeAioForSolution(\''+hw.id+'\')" style="background:var(--surface2);border:1px solid var(--teal);color:var(--teal);font-size:12px;font-weight:700;padding:7px 13px;border-radius:8px;cursor:pointer;">수정 없이 해설 보기</button>'
+    +'<button onclick="finalizeAioForSolution(\''+hw.id+'\')" style="background:var(--surface2);border:1px solid var(--teal);color:var(--teal-l);font-size:12px;font-weight:700;padding:7px 13px;border-radius:8px;cursor:pointer;">수정 없이 해설 보기</button>'
     +'</div>';
 }
 function _aioSubmitCount(sub){ return (sub && sub.submittedFull) ? (sub.submitCount||1) : 0; }
@@ -1492,7 +1492,7 @@ function renderAioSolve(){
   var html='<div style="margin-bottom:12px;">'
     +'<button class="icon-btn" style="padding:6px 12px;font-size:13px;" onclick="setTab(\'hw\')">← 숙제 목록</button></div>'
     +'<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;">'
-    +'<div style="font-size:12px;font-weight:700;color:var(--teal);">📝 '+esc(_aioBookOf(hw))+'</div>'
+    +'<div style="font-size:12px;font-weight:700;color:var(--teal-l);">📝 '+esc(_aioBookOf(hw))+'</div>'
     +'<div style="font-size:16px;font-weight:800;margin-top:3px;">'+esc(uname)+'</div>'
     +'<div style="font-size:12px;color:var(--muted);margin-top:3px;">'+hw.qStart+'번 ~ '+hw.qEnd+'번</div></div>'
     +'<div style="background:var(--gold-soft);border-radius:10px;padding:10px 13px;font-size:12px;color:#7a5a16;margin-bottom:12px;font-weight:600;line-height:1.6;">'
@@ -1661,7 +1661,7 @@ function showAioResult(r, submitCount, hw){
       +'</div></div>';
   }
   if(!wrongArr.length && !pendArr.length){
-    numHtml='<div style="margin-top:14px;font-size:13px;color:var(--teal);font-weight:700;">전부 맞았어요 🎉</div>';
+    numHtml='<div style="margin-top:14px;font-size:13px;color:var(--teal-l);font-weight:700;">전부 맞았어요 🎉</div>';
   }
   var main=document.getElementById('main');
   main.innerHTML='<div style="text-align:center;padding:30px 16px;">'
@@ -1669,7 +1669,7 @@ function showAioResult(r, submitCount, hw){
     +'<div style="font-size:18px;font-weight:800;margin:8px 0 16px;">제출 완료!</div>'
     +'<div style="background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;text-align:left;max-width:320px;margin:0 auto;">'
     +'<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);"><span>전체 문제</span><b>'+c.total+'개</b></div>'
-    +'<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);"><span>맞은 문제</span><b style="color:var(--teal)">'+c.correct+'개</b></div>'
+    +'<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);"><span>맞은 문제</span><b style="color:var(--teal-l)">'+c.correct+'개</b></div>'
     +'<div style="display:flex;justify-content:space-between;padding:7px 0;'+(c.pending?'border-bottom:1px solid var(--line);':'')+'"><span>틀린 문제</span><b style="color:var(--red)">'+c.wrong+'개</b></div>'
     +(c.pending?'<div style="display:flex;justify-content:space-between;padding:7px 0;"><span>직접확인(△)</span><b>'+c.pending+'개</b></div>':'')
     +numHtml
@@ -1899,7 +1899,7 @@ function renderPlannerShare(today){
     var p = (PLANNERS[key]||{})[today];
     html += '<div class="post" style="padding:12px 14px;">';
     html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">';
-    html += '<span style="font-size:14px;font-weight:700;">'+esc(nm)+(key===MY_KEY?' <span style="font-size:11px;color:var(--teal);">(나)</span>':'')+'</span>';
+    html += '<span style="font-size:14px;font-weight:700;">'+esc(nm)+(key===MY_KEY?' <span style="font-size:11px;color:var(--teal-l);">(나)</span>':'')+'</span>';
     if(p){
       var pct = (p.selfPct!=null) ? p.selfPct : (p.achieve?parseInt(p.achieve):null);
       if(pct!=null){
@@ -1958,7 +1958,7 @@ function renderCheerButtons(date, targetKey){
     h += '<button onclick="sendCheer(\''+date+'\',\''+targetKey.replace(/'/g,"\\'")+'\',\''+key+'\')" style="display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;border:1.5px solid '+(on?'var(--teal)':'var(--line)')+';background:'+(on?'var(--teal-bg)':'var(--surface)')+';cursor:pointer;font-size:12px;">'
       +'<img src="'+CHEER_IMGS[key]+'" style="width:22px;height:22px;border-radius:4px;object-fit:cover;">'
       +'<span style="color:var(--ink2);">'+label+'</span>'
-      +(counts[key]?'<b style="color:var(--teal);">'+counts[key]+'</b>':'')
+      +(counts[key]?'<b style="color:var(--teal-l);">'+counts[key]+'</b>':'')
       +'</button>';
   });
   h += '</div>';
@@ -1974,7 +1974,7 @@ function renderCheerSummary(date, myKey){
   senders.forEach(function(s){ var k=cheers[s]; if(counts[k]!=null) counts[k]++; });
   var h='<div style="display:flex;gap:8px;align-items:center;border-top:1px solid var(--line);padding-top:9px;margin-top:9px;font-size:12px;color:var(--muted);">받은 응원';
   CHEER_LIST.forEach(function(p){
-    if(counts[p[0]]) h+='<span style="display:inline-flex;align-items:center;gap:2px;"><img src="'+CHEER_IMGS[p[0]]+'" style="width:20px;height:20px;border-radius:4px;"><b style="color:var(--teal);">'+counts[p[0]]+'</b></span>';
+    if(counts[p[0]]) h+='<span style="display:inline-flex;align-items:center;gap:2px;"><img src="'+CHEER_IMGS[p[0]]+'" style="width:20px;height:20px;border-radius:4px;"><b style="color:var(--teal-l);">'+counts[p[0]]+'</b></span>';
   });
   h+='</div>';
   return h;
@@ -2176,7 +2176,7 @@ function updateSelfAchieveHint(){
   box.style.display='block';
   var self=_plannerItems.filter(function(it){return it.place==='자습';});
   var done=self.filter(function(it){return it.done;}).length;
-  box.innerHTML='자습 달성도 <b style="color:var(--teal);">'+pct+'%</b> <span style="color:var(--muted);font-size:11px;">('+done+'/'+self.length+' 완료)</span>';
+  box.innerHTML='자습 달성도 <b style="color:var(--teal-l);">'+pct+'%</b> <span style="color:var(--muted);font-size:11px;">('+done+'/'+self.length+' 완료)</span>';
 }
 function renderPlannerItems(){
   var box=document.getElementById('pl-items'); if(!box) return;
@@ -2315,7 +2315,7 @@ function renderPlannerAdmin(){
     html += '<div class="post" style="font-size:13.5px;color:var(--ink2);">'+notYet.map(esc).join(', ')+'</div>';
   }
   // 제출
-  html += '<div class="section-title" style="color:var(--teal);">제출 ('+submitted.length+')</div>';
+  html += '<div class="section-title" style="color:var(--teal-l);">제출 ('+submitted.length+')</div>';
   if(!submitted.length){
     html += '<div class="empty">아직 제출한 학생이 없어요.</div>';
   } else {
