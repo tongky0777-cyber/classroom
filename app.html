@@ -1390,7 +1390,7 @@ var AIO_MAX_SUBMITS=2;   // 최초 제출 1회 + 수정 1회
 // ===== 해설 이미지 (제출 후에만 열람) =====
 // 나중에 Firebase Storage로 옮길 땐 이 주소 한 줄만 바꾸면 된다.
 var SOLUTION_BASE='./data/해설/';
-var SOL_VER='20260814d';  // 해설 이미지 갱신 시 이 값을 바꾸면 학생 캐시가 새로고침됨
+var SOL_VER='20260818a';  // 해설 이미지 갱신 시 이 값을 바꾸면 학생 캐시가 새로고침됨
 var _solIndex=null, _solLoading=null;
 function loadSolutionIndex(){
   if(_solIndex) return Promise.resolve(_solIndex);
@@ -1517,7 +1517,7 @@ function buildAioQ(n, ak, unitKey){
   var meta=Grader.getAnswer(ak, unitKey, n);
   var k=meta?meta.k:'self';
   var saved=_aioCtx.inputs[n]||{};
-  var TAG={ mc:'객관식', int:'단답', frac:'분수', self:'직접확인' };
+  var TAG={ mc:'객관식', int:'단답', frac:'분수', self:'직접확인', free:'정답 없음' };
   var div=document.createElement('div');
   div.style.cssText='background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 13px;margin-bottom:9px;';
   var head='<div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;"><b style="font-size:15px;">'+n+'번</b>'
@@ -1545,6 +1545,8 @@ function buildAioQ(n, ak, unitKey){
       +'<div style="height:2px;background:var(--ink);margin:5px 0;"></div>'
       +'<input id="aio-fd-'+n+'" inputmode="numeric" placeholder="분모" value="'+esc(den)+'" oninput="onAioFrac('+n+')" style="width:90px;height:38px;border-radius:8px;border:1.5px solid var(--bd2);background:var(--bg2);color:var(--ink);text-align:center;font-size:16px;font-family:var(--sans);"></div>'
       +'<div style="font-size:12px;color:var(--muted);">정수면 분자만,<br>분수면 둘 다</div></div>';
+  } else if(k==='free'){
+    body='<div style="font-size:12px;color:#7a5a16;background:var(--gold-soft);border-radius:8px;padding:9px 12px;font-weight:600;">\u2713 교재가 잘못돼 정답을 정할 수 없는 문제예요. 비워 두셔도 되고, 모두 정답 처리됩니다.</div>';
   } else {
     body='<div style="font-size:12px;color:#7a5a16;background:var(--gold-soft);border-radius:8px;padding:9px 12px;font-weight:600;">△ 자동채점이 안 되는 문제예요. 답을 적지 않아도 되고, 수업시간에 선생님과 확인합니다.</div>';
   }
@@ -1580,16 +1582,18 @@ function onAioFrac(n){
 }
 function updateAioProg(){
   var ctx=_aioCtx; if(!ctx) return;
-  var hw=ctx.hw, answered=0, gradable=0, selfCnt=0;
+  var hw=ctx.hw, answered=0, gradable=0, selfCnt=0, freeCnt=0;
   for(var n=hw.qStart;n<=hw.qEnd;n++){
     var meta=Grader.getAnswer(_aioAK, hw.unitKey, n);
+    if(meta && meta.k==='free'){ freeCnt++; continue; }
     if(meta && meta.k==='self'){ selfCnt++; continue; }
     gradable++;
     var raw=(ctx.inputs[n]||{}).raw;
     if(raw!=null && String(raw).trim()!=='') answered++;
   }
   var el=document.getElementById('aio-prog');
-  if(el) el.innerHTML='입력 '+answered+' / '+gradable+'문제'+(selfCnt?' (직접확인 '+selfCnt+')':'');
+  if(el) el.innerHTML='입력 '+answered+' / '+gradable+'문제'
+    +(selfCnt?' (직접확인 '+selfCnt+')':'')+(freeCnt?' (정답 없음 '+freeCnt+')':'');
 }
 
 var _aioSubmitting=false;
