@@ -1390,7 +1390,7 @@ var AIO_MAX_SUBMITS=2;   // 최초 제출 1회 + 수정 1회
 // ===== 해설 이미지 (제출 후에만 열람) =====
 // 나중에 Firebase Storage로 옮길 땐 이 주소 한 줄만 바꾸면 된다.
 var SOLUTION_BASE='./data/해설/';
-var SOL_VER='20260818a';  // 해설 이미지 갱신 시 이 값을 바꾸면 학생 캐시가 새로고침됨
+var SOL_VER='20260818b';  // 해설 이미지 갱신 시 이 값을 바꾸면 학생 캐시가 새로고침됨
 var _solIndex=null, _solLoading=null;
 function loadSolutionIndex(){
   if(_solIndex) return Promise.resolve(_solIndex);
@@ -1540,7 +1540,10 @@ function buildAioQ(n, ak, unitKey){
   } else if(k==='frac'){
     var sv=saved.raw||'', num='', den='';
     if(sv.indexOf('/')>-1){ var pp=sv.split('/'); num=pp[0]; den=pp[1]; } else { num=sv; }
-    body='<div style="display:flex;gap:12px;align-items:center;"><div style="width:90px;">'
+    var fneg=(String(num).charAt(0)==='-'); num=String(num).replace('-','');
+    body='<div style="display:flex;gap:8px;align-items:center;">'
+      +'<button id="aio-fsign-'+n+'" data-neg="'+(fneg?'1':'0')+'" onclick="toggleAioFracSign('+n+')" style="width:46px;height:44px;border-radius:8px;border:1.5px solid '+(fneg?'var(--ink)':'var(--bd2)')+';background:'+(fneg?'var(--ink)':'var(--surface2)')+';color:'+(fneg?'var(--bg)':'var(--ink)')+';font-size:19px;font-weight:700;cursor:pointer;">\u00b1</button>'
+      +'<div style="width:90px;">'
       +'<input id="aio-fn-'+n+'" inputmode="numeric" placeholder="분자" value="'+esc(num)+'" oninput="onAioFrac('+n+')" style="width:90px;height:38px;border-radius:8px;border:1.5px solid var(--bd2);background:var(--bg2);color:var(--ink);text-align:center;font-size:16px;font-family:var(--sans);">'
       +'<div style="height:2px;background:var(--ink);margin:5px 0;"></div>'
       +'<input id="aio-fd-'+n+'" inputmode="numeric" placeholder="분모" value="'+esc(den)+'" oninput="onAioFrac('+n+')" style="width:90px;height:38px;border-radius:8px;border:1.5px solid var(--bd2);background:var(--bg2);color:var(--ink);text-align:center;font-size:16px;font-family:var(--sans);"></div>'
@@ -1570,14 +1573,28 @@ function toggleAioSign(n){
 function onAioInt(n){
   var b=document.getElementById('aio-sign-'+n);
   var neg = b.getAttribute('data-neg')==='1';
-  var v=(document.getElementById('aio-in-'+n).value||'').replace(/[^0-9]/g,'');
+  var el=document.getElementById('aio-in-'+n);
+  var v=(el.value||'').replace(/[^0-9]/g,''); if(el.value!==v) el.value=v;
   _aioCtx.inputs[n]=Object.assign({},_aioCtx.inputs[n],{raw:(v===''?'':(neg?'-':'')+v)});
   updateAioProg();
 }
+function toggleAioFracSign(n){
+  var b=document.getElementById('aio-fsign-'+n);
+  var neg = b.getAttribute('data-neg')==='1' ? false : true;
+  b.setAttribute('data-neg', neg?'1':'0');
+  b.style.background = neg?'var(--ink)':'var(--surface2)';
+  b.style.color = neg?'var(--bg)':'var(--ink)';
+  b.style.borderColor = neg?'var(--ink)':'var(--bd2)';
+  onAioFrac(n);
+}
 function onAioFrac(n){
-  var num=(document.getElementById('aio-fn-'+n).value||'').trim();
-  var den=(document.getElementById('aio-fd-'+n).value||'').trim();
-  _aioCtx.inputs[n]=Object.assign({},_aioCtx.inputs[n],{raw:(den===''?num:num+'/'+den)});
+  var b=document.getElementById('aio-fsign-'+n);
+  var neg = !!(b && b.getAttribute('data-neg')==='1');
+  var fn=document.getElementById('aio-fn-'+n), fd=document.getElementById('aio-fd-'+n);
+  var num=(fn.value||'').replace(/[^0-9]/g,''); if(fn.value!==num) fn.value=num;
+  var den=(fd.value||'').replace(/[^0-9]/g,''); if(fd.value!==den) fd.value=den;
+  var v=(num===''?'':(den===''?num:num+'/'+den));
+  _aioCtx.inputs[n]=Object.assign({},_aioCtx.inputs[n],{raw:(v===''?'':(neg?'-':'')+v)});
   updateAioProg();
 }
 function updateAioProg(){
