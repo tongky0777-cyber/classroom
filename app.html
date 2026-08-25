@@ -196,7 +196,9 @@ var UID = localStorage.getItem('class_uid');
 var MY_NAME = localStorage.getItem('class_name');
 var MY_ROLE = localStorage.getItem('class_role') || 'student';
 var MY_KEY = localStorage.getItem('class_namekey');
-if(!UID){ location.href='index.html'; }
+// ★UID 만으로 튕기지 않는다 (지시 260825-0730 ②)★ — 369~371행이 이미 못 박아 둔 규칙에 맞춘다.
+// class_uid 는 익명 인증 사정으로 비어 있을 수 있다. 로그인 여부는 class_namekey 로 본다.
+if(!UID && !MY_KEY){ location.href='index.html'; }
 
 // ===== 텔레그램 알림 (선생님에게) =====
 var TELEGRAM_NOTIFY_ENDPOINT = "https://kimbjmath-dashboard.vercel.app/api/telegram";
@@ -327,6 +329,9 @@ function verifyAdminSession(cb){
     if(r===null) return;                      // 이미 로그아웃 처리됨
     if(!r || !r.ok) throw new Error('transient'); // 200인데 응답이 이상하면 일시 오류로 취급(로그아웃 안 함)
     if(r.role && r.role!==MY_ROLE){ clearClassSession(); location.href='index.html'; return; }
+    // ★슬라이딩 갱신 (지시 260825-0730 ①)★ — 서버가 새 토큰을 주면 갈아 끼운다.
+    // 이 줄이 없으면 12시간이 지난 뒤 처음 앱을 여는 순간 반드시 401 로 풀린다.
+    if(r.token) localStorage.setItem('class_admin_token', r.token);
     if(r.name) localStorage.setItem('class_name', r.name);
     if(r.key) localStorage.setItem('class_namekey', r.key);
     cb();
