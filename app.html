@@ -198,7 +198,10 @@ var MY_ROLE = localStorage.getItem('class_role') || 'student';
 var MY_KEY = localStorage.getItem('class_namekey');
 // ★UID 만으로 튕기지 않는다 (지시 260825-0730 ②)★ — 369~371행이 이미 못 박아 둔 규칙에 맞춘다.
 // class_uid 는 익명 인증 사정으로 비어 있을 수 있다. 로그인 여부는 class_namekey 로 본다.
-if(!UID && !MY_KEY){ location.href='index.html'; }
+// ★8/8 로 맞춘다 (판정 260825-1930)★ — 되튐 때문이 아니라 「반쪽 남은 상태를 남기지 마라」다.
+// 여기를 지나는 사람은 uid·namekey 가 없지만 class_role·class_admin_token 이 남아 있을 수 있다.
+// clearClassSession 은 아래쪽 ★함수 선언★ 이라 같은 script 블록인 이 자리에서 호이스팅으로 불린다.
+if(!UID && !MY_KEY){ clearClassSession(); location.href='index.html'; }
 
 // ===== 텔레그램 알림 (선생님에게) =====
 var TELEGRAM_NOTIFY_ENDPOINT = "https://kimbjmath-dashboard.vercel.app/api/telegram";
