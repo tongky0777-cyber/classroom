@@ -1525,7 +1525,7 @@ function buildAioQ(n, ak, unitKey){
   var meta=Grader.getAnswer(ak, unitKey, n);
   var k=meta?meta.k:'self';
   var saved=_aioCtx.inputs[n]||{};
-  var TAG={ mc:'객관식', int:'단답', frac:'분수', self:'직접확인', free:'정답 없음' };
+  var TAG={ mc:'객관식', int:'단답', frac:'분수', self:'직접확인', free:'\u26a0 정답 오류' };
   var div=document.createElement('div');
   div.style.cssText='background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 13px;margin-bottom:9px;';
   var head='<div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;"><b style="font-size:15px;">'+n+'번</b>'
@@ -1557,7 +1557,8 @@ function buildAioQ(n, ak, unitKey){
       +'<input id="aio-fd-'+n+'" inputmode="numeric" placeholder="분모" value="'+esc(den)+'" oninput="onAioFrac('+n+')" style="width:90px;height:38px;border-radius:8px;border:1.5px solid var(--bd2);background:var(--bg2);color:var(--ink);text-align:center;font-size:16px;font-family:var(--sans);"></div>'
       +'<div style="font-size:12px;color:var(--muted);">정수면 분자만,<br>분수면 둘 다</div></div>';
   } else if(k==='free'){
-    body='<div style="font-size:12px;color:#7a5a16;background:var(--gold-soft);border-radius:8px;padding:9px 12px;font-weight:600;">\u2713 교재가 잘못돼 정답을 정할 수 없는 문제예요. 비워 두셔도 되고, 모두 정답 처리됩니다.</div>';
+    var _why=(meta&&meta.a)?('<div style="font-weight:500;margin-top:5px;font-size:11px;line-height:1.6;">'+esc(String(meta.a))+'</div>'):'';
+    body='<div style="font-size:12px;color:#7a5a16;background:var(--gold-soft);border-radius:8px;padding:9px 12px;font-weight:700;">\u26a0 교재의 정답이 잘못된 문제예요. 비워 두셔도 되고, <b>모두 정답 처리</b>됩니다.'+_why+'</div>';
   } else {
     body='<div style="font-size:12px;color:#7a5a16;background:var(--gold-soft);border-radius:8px;padding:9px 12px;font-weight:600;">△ 자동채점이 안 되는 문제예요. 답을 적지 않아도 되고, 수업시간에 선생님과 확인합니다.</div>';
   }
@@ -1675,6 +1676,7 @@ function showAioResult(r, submitCount, hw){
   var c=r.counts;
   var wrongArr=(r.wrong||[]).slice().sort(function(a,b){return a-b;});
   var pendArr=(r.pending||[]).slice().sort(function(a,b){return a-b;});
+  var badArr=(r.bad||[]).slice().sort(function(a,b){return a-b;});
   var numHtml='';
   if(wrongArr.length){
     numHtml+='<div style="margin-top:14px;text-align:left;border-top:1px solid var(--line);padding-top:12px;">'
@@ -1693,6 +1695,16 @@ function showAioResult(r, submitCount, hw){
   }
   if(!wrongArr.length && !pendArr.length){
     numHtml='<div style="margin-top:14px;font-size:13px;color:var(--teal-l);font-weight:700;border-left:3px solid var(--teal-l);padding-left:9px;text-align:left;">\u25cb 정답 · 전부 맞았어요 🎉</div>';
+  }
+  // 교재의 정답이 틀린 문항 — 정답 처리했지만 학생에게 알린다
+  if(badArr.length){
+    numHtml+='<div style="margin-top:12px;text-align:left;background:var(--gold-soft);border-radius:8px;padding:10px 12px;">'
+      +'<div style="font-size:12px;color:#7a5a16;font-weight:700;margin-bottom:7px;">\u26a0 교재 정답 오류 · 모두 정답 처리했어요</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
+      +badArr.map(function(n){ return '<span style="background:var(--surface);color:#7a5a16;font-size:13px;font-weight:700;padding:6px 11px;border-radius:8px;">\u26a0 '+n+'번</span>'; }).join('')
+      +'</div>'
+      +'<div style="font-size:11px;color:var(--muted);margin-top:7px;line-height:1.6;">교재의 빠른정답이 잘못된 문항이에요. 해설카드에 까닭을 적어 두었어요.</div>'
+      +'</div>';
   }
   var main=document.getElementById('main');
   main.innerHTML='<div style="text-align:center;padding:30px 16px;">'
